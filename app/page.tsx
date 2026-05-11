@@ -51,16 +51,16 @@ export default function Home() {
 
   return (
     <div className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto flex flex-col pt-12 md:pt-20">
-      <header className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
+      <header className="mb-8 md:mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <h1 className="text-4xl md:text-5xl font-serif text-[#D4AF37] italic tracking-tight mb-2">Cigaar Archive</h1>
           <p className="text-[10px] uppercase tracking-[0.3em] text-[#888]">Inventory Management System v1.0</p>
         </div>
         <button 
           onClick={openNewForm}
-          className="flex items-center gap-2 bg-[#D4AF37] text-black px-6 py-3 hover:bg-transparent hover:text-[#D4AF37] border border-[#D4AF37] transition-all duration-300 font-bold uppercase tracking-widest text-[10px]"
+          className="w-full md:w-auto flex items-center justify-center gap-3 bg-[#D4AF37] text-black px-8 py-5 md:py-3 hover:bg-[#E5C25A] active:bg-[#B3932E] md:hover:bg-transparent md:hover:text-[#D4AF37] border border-[#D4AF37] transition-all duration-300 font-bold uppercase tracking-widest text-xs md:text-[10px]"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-5 h-5 md:w-4 md:h-4" />
           Log New Entry
         </button>
       </header>
@@ -152,16 +152,16 @@ export default function Home() {
                     {item.barcode && <p className="text-[9px] text-[#555] font-mono tracking-widest">SKU: {item.barcode}</p>}
                   </div>
                   
-                  <div className="flex justify-between items-end mt-4">
-                    <div className="flex items-center bg-[#14161C] border border-[#2A2A2A]">
+                  <div className="flex justify-between items-end mt-6">
+                    <div className="flex items-center bg-[#14161C] border border-[#2A2A2A] rounded-sm overflow-hidden">
                       <button 
                         onClick={() => item.id && changeQuantity(item.id, -1, item.quantity)}
-                        className="px-2 py-1 text-[#888] hover:text-[#D4AF37] transition-colors"
+                        className="px-4 py-3 sm:px-3 sm:py-2 text-[#888] hover:text-[#D4AF37] hover:bg-[#1F2127] active:bg-[#2A2A2A] transition-all text-lg font-medium leading-none"
                       >-</button>
-                      <span className="text-sm font-mono px-3 text-[#E5E1DA] min-w-[2.5rem] text-center">{item.quantity}</span>
+                      <span className="text-base font-mono px-4 text-[#E5E1DA] min-w-[3rem] text-center">{item.quantity}</span>
                       <button 
                         onClick={() => item.id && changeQuantity(item.id, 1, item.quantity)}
-                        className="px-2 py-1 text-[#888] hover:text-[#D4AF37] transition-colors"
+                        className="px-4 py-3 sm:px-3 sm:py-2 text-[#888] hover:text-[#D4AF37] hover:bg-[#1F2127] active:bg-[#2A2A2A] transition-all text-lg font-medium leading-none"
                       >+</button>
                     </div>
                     

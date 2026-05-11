@@ -14,9 +14,7 @@ interface InventoryFormProps {
 
 export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
   const [brand, setBrand] = useState(existingItem?.brand || '');
-  const [customBrand, setCustomBrand] = useState('');
   const [flavor, setFlavor] = useState(existingItem?.flavor || '');
-  const [customFlavor, setCustomFlavor] = useState('');
   const [packType, setPackType] = useState(existingItem?.packType || 'Single');
   const [quantity, setQuantity] = useState(existingItem?.quantity?.toString() || '0');
   const [reorderThreshold, setReorderThreshold] = useState(existingItem?.reorderThreshold?.toString() || '10');
@@ -46,12 +44,8 @@ export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
       const existing = await db.items.where('barcode').equals(result).first();
       if (existing) {
         toast.info('Barcode found in inventory! Loading details...');
-        setBrand(DEFAULT_BRANDS.includes(existing.brand) ? existing.brand : 'Other');
-        if (!DEFAULT_BRANDS.includes(existing.brand)) setCustomBrand(existing.brand);
-        
-        setFlavor(CATEGORIES.includes(existing.flavor) ? existing.flavor : 'Other');
-        if (!CATEGORIES.includes(existing.flavor)) setCustomFlavor(existing.flavor);
-        
+        setBrand(existing.brand);
+        setFlavor(existing.flavor);
         setPackType(existing.packType || 'Single');
         if (existing.image) setImage(existing.image);
       } else {
@@ -65,18 +59,15 @@ export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const finalBrand = brand === 'Other' ? customBrand : brand;
-    const finalFlavor = flavor === 'Other' ? customFlavor : flavor;
-
-    if (!finalBrand || !finalFlavor) {
+    if (!brand.trim() || !flavor.trim()) {
       toast.error('Please specify both brand and flavor.');
       return;
     }
 
     try {
       const item: InventoryItem = {
-        brand: finalBrand,
-        flavor: finalFlavor,
+        brand: brand.trim(),
+        flavor: flavor.trim(),
         packType: packType,
         quantity: parseInt(quantity, 10) || 0,
         reorderThreshold: parseInt(reorderThreshold, 10) || 0,
@@ -101,153 +92,135 @@ export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-[#0A0B0E]/80 flex items-center justify-center p-4 backdrop-blur-sm">
-        <div className="bg-[#0D0F13] border border-[#2A2A2A] w-full max-w-lg flex flex-col max-h-[90vh]">
-          <div className="flex justify-between items-center p-6 border-b border-[#2A2A2A]">
-            <h2 className="text-xl font-serif text-[#D4AF37] italic">{existingItem ? 'Edit Entry' : 'New Archive Entry'}</h2>
-            <button onClick={onClose} className="p-2 hover:text-[#D4AF37] transition-colors text-[#888]">
-              <X className="w-5 h-5" />
+      <div className="fixed inset-0 z-50 bg-[#0A0B0E]/90 flex items-end sm:items-center justify-center sm:p-4 backdrop-blur-sm">
+        <div className="bg-[#0D0F13] border-t sm:border border-[#2A2A2A] w-full max-w-xl flex flex-col max-h-[95vh] sm:max-h-[90vh] rounded-t-xl sm:rounded-none overflow-hidden">
+          <div className="flex justify-between items-center p-5 sm:p-6 border-b border-[#2A2A2A] sticky top-0 bg-[#0D0F13] z-10">
+            <h2 className="text-2xl font-serif text-[#D4AF37] italic">{existingItem ? 'Edit Entry' : 'New Archive Entry'}</h2>
+            <button onClick={onClose} className="p-2 sm:p-3 hover:text-[#D4AF37] transition-colors text-[#888] active:scale-95">
+              <X className="w-6 h-6" />
             </button>
           </div>
           
-          <div className="overflow-y-auto p-6 flex-1">
-            <form id="inventory-form" onSubmit={handleSubmit} className="space-y-6">
+          <div className="overflow-y-auto p-5 sm:p-6 flex-1 bg-[#0A0B0E]/50">
+            <form id="inventory-form" onSubmit={handleSubmit} className="space-y-8">
               {/* Barcode Section */}
-              <div>
-                <label className="block text-[10px] uppercase tracking-[0.2em] text-[#888] mb-2">Barcode (SKU/UPC)</label>
-                <div className="flex gap-2">
+              <div className="space-y-2">
+                <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-semibold">Barcode (SKU/UPC)</label>
+                <div className="flex gap-3">
                   <input
                     type="text"
-                    placeholder="Scan or enter barcode manually"
+                    placeholder="Scan or enter manually"
                     value={barcode}
                     onChange={(e) => setBarcode(e.target.value)}
-                    className="flex-1 bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors font-mono"
+                    className="flex-1 bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-4 text-base focus:outline-none focus:border-[#D4AF37] transition-colors font-mono rounded-none"
                   />
                   <button
                     type="button"
                     onClick={() => setIsScanning(true)}
-                    className="px-4 bg-[#1F2127] border border-[#2A2A2A] text-[#D4AF37] hover:border-[#D4AF37] transition-colors flex items-center justify-center"
+                    className="px-6 bg-[#1F2127] border border-[#2A2A2A] text-[#D4AF37] hover:border-[#D4AF37] transition-colors flex items-center justify-center active:scale-95 shadow-sm"
                     title="Scan Barcode"
                   >
-                    <ScanBarcode className="w-5 h-5" />
+                    <ScanBarcode className="w-6 h-6" />
                   </button>
                 </div>
               </div>
 
-              {/* Brand */}
-              <div>
-                <label className="block text-[10px] uppercase tracking-[0.2em] text-[#888] mb-2">Brand Origin</label>
-                <select
-                  value={brand}
-                  onChange={(e) => setBrand(e.target.value)}
-                  className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors appearance-none"
-                  required
-                >
-                  <option value="" disabled>Select Brand</option>
-                  {DEFAULT_BRANDS.map(b => (
-                    <option key={b} value={b}>{b}</option>
-                  ))}
-                  <option value="Other">Other (Custom)</option>
-                </select>
-                {brand === 'Other' && (
+              {/* Brand and Flavor */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-semibold">Brand Origin</label>
                   <input
+                    list="brand-options"
                     type="text"
-                    placeholder="Enter custom brand"
-                    value={customBrand}
-                    onChange={(e) => setCustomBrand(e.target.value)}
-                    className="mt-3 w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors"
+                    placeholder="e.g. Swisher Sweets"
+                    value={brand}
+                    onChange={(e) => setBrand(e.target.value)}
+                    className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-4 text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-none"
                     required
                   />
-                )}
-              </div>
+                  <datalist id="brand-options">
+                    {DEFAULT_BRANDS.map(b => <option key={b} value={b} />)}
+                  </datalist>
+                </div>
 
-              <div className="grid grid-cols-2 gap-6">
-                {/* Flavor/Sub-category */}
-                <div>
-                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#888] mb-2">Type / Collection</label>
-                  <select
+                <div className="space-y-2">
+                  <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-semibold">Type / Flavor</label>
+                  <input
+                    list="flavor-options"
+                    type="text"
+                    placeholder="e.g. Grape"
                     value={flavor}
                     onChange={(e) => setFlavor(e.target.value)}
-                    className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors appearance-none"
+                    className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-4 text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-none"
                     required
-                  >
-                    <option value="" disabled>Select Type</option>
-                    {CATEGORIES.map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                    <option value="Other">Other (Custom)</option>
-                  </select>
-                  {flavor === 'Other' && (
-                    <input
-                      type="text"
-                      placeholder="Enter custom flavor"
-                      value={customFlavor}
-                      onChange={(e) => setCustomFlavor(e.target.value)}
-                      className="mt-3 w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors"
-                      required
-                    />
-                  )}
-                </div>
-
-                {/* Pack Type */}
-                <div>
-                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#888] mb-2">Format</label>
-                  <select
-                    value={packType}
-                    onChange={(e) => setPackType(e.target.value)}
-                    className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors appearance-none"
-                    required
-                  >
-                    <option value="Single">Single Pack</option>
-                    <option value="Box">Full Box</option>
-                    <option value="Carton">Carton</option>
-                  </select>
+                  />
+                  <datalist id="flavor-options">
+                    {CATEGORIES.map(c => <option key={c} value={c} />)}
+                  </datalist>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#888] mb-2">Current Units</label>
+              {/* Format Segmented Control */}
+              <div className="space-y-2">
+                <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-semibold">Format</label>
+                <div className="flex bg-[#14161C] border border-[#2A2A2A] w-full p-1 gap-1">
+                  {['Single', 'Box', 'Carton'].map(pt => (
+                    <button
+                      key={pt}
+                      type="button"
+                      onClick={() => setPackType(pt)}
+                      className={`flex-1 py-4 text-sm tracking-widest uppercase transition-all duration-200 ${packType === pt ? 'bg-[#2A2A2A] text-[#D4AF37] font-bold shadow-sm' : 'text-[#888] hover:text-[#E5E1DA]'}`}
+                    >
+                      {pt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Quantities */}
+              <div className="grid grid-cols-2 gap-6 bg-[#14161C] border border-[#2A2A2A] p-2">
+                <div className="space-y-2 p-3 pb-0">
+                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#888] font-semibold text-center">Current Units</label>
                   <input
                     type="number"
                     min="0"
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value)}
-                    className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors"
+                    className="w-full bg-transparent text-[#D4AF37] p-2 text-3xl font-serif text-center focus:outline-none transition-colors border-b border-transparent focus:border-[#D4AF37]/50"
                     required
                   />
                 </div>
-                <div>
-                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#888] mb-2">Reorder Target</label>
+                <div className="space-y-2 p-3 pb-0 border-l border-[#2A2A2A]">
+                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#888] font-semibold text-center">Reorder Target</label>
                   <input
                     type="number"
                     min="0"
                     value={reorderThreshold}
                     onChange={(e) => setReorderThreshold(e.target.value)}
-                    className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors"
+                    className="w-full bg-transparent text-[#E5E1DA] p-2 text-3xl font-serif text-center focus:outline-none transition-colors border-b border-transparent focus:border-[#D4AF37]/50"
                     required
                   />
                 </div>
               </div>
 
               {/* Image upload */}
-              <div>
-                <label className="block text-[10px] uppercase tracking-[0.2em] text-[#888] mb-2">Visual Asset</label>
+              <div className="space-y-2">
+                <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-semibold">Visual Asset</label>
                 {image ? (
-                  <div className="relative inline-block mt-2">
-                    <img src={image} alt="Preview" className="h-32 w-32 object-cover border border-[#2A2A2A] bg-[#14161C]" />
+                  <div className="relative inline-block mt-2 w-full sm:w-auto text-center">
+                    <img src={image} alt="Preview" className="h-40 w-40 object-cover border border-[#2A2A2A] bg-[#14161C] mx-auto sm:mx-0 shadow-lg" />
                     <button
                       type="button"
                       onClick={removeImage}
-                      className="absolute -top-3 -right-3 bg-[#0D0F13] border border-[#D4AF37] text-[#D4AF37] rounded-none p-1 hover:bg-[#D4AF37] hover:text-black transition-colors"
+                      className="absolute -top-3 sm:-top-3 right-1/2 translate-x-[50px] sm:translate-x-0 sm:-right-3 bg-[#0D0F13] border border-[#D4AF37] text-[#D4AF37] p-2 hover:bg-[#D4AF37] hover:text-black transition-colors rounded-full sm:rounded-none shadow-md"
                     >
-                      <X className="w-3 h-3" />
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
                 ) : (
-                  <div className="mt-2 border border-dashed border-[#2A2A2A] p-6 flex flex-col items-center justify-center bg-[#14161C] hover:border-[#D4AF37]/50 transition-colors cursor-pointer relative group">
-                    <UploadCloud className="w-8 h-8 text-[#444] mb-2 group-hover:text-[#D4AF37]/50 transition-colors" />
-                    <span className="text-[10px] uppercase tracking-widest text-[#888]">Select Reference Image</span>
+                  <div className="mt-2 border border-dashed border-[#2A2A2A] p-8 flex flex-col items-center justify-center bg-[#14161C] hover:border-[#D4AF37]/50 transition-colors cursor-pointer relative group active:bg-[#1F2127]">
+                    <UploadCloud className="w-10 h-10 text-[#444] mb-3 group-hover:text-[#D4AF37]/50 transition-colors" />
+                    <span className="text-xs uppercase tracking-widest text-[#888] font-semibold">Upload Image</span>
                     <input
                       type="file"
                       accept="image/*"
@@ -260,18 +233,18 @@ export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
             </form>
           </div>
           
-          <div className="p-6 border-t border-[#2A2A2A] bg-[#0D0F13] flex justify-end gap-4 flex-shrink-0">
+          <div className="p-5 sm:p-6 border-t border-[#2A2A2A] bg-[#0D0F13] flex gap-4 flex-shrink-0">
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-3 border border-[#2A2A2A] text-[#888] bg-transparent hover:text-[#E5E1DA] transition-colors text-[10px] uppercase tracking-widest"
+              className="flex-1 py-4 border border-[#2A2A2A] text-[#888] bg-transparent hover:text-[#E5E1DA] active:bg-[#1F2127] transition-colors text-xs uppercase tracking-widest font-semibold"
             >
               Cancel
             </button>
             <button
               type="submit"
               form="inventory-form"
-              className="px-6 py-3 bg-[#D4AF37] text-black border border-[#D4AF37] hover:bg-transparent hover:text-[#D4AF37] transition-all text-[10px] uppercase tracking-widest font-bold"
+              className="flex-[2] py-4 bg-[#D4AF37] text-black border border-[#D4AF37] hover:bg-[#E5C25A] active:bg-[#B3932E] transition-all text-xs uppercase tracking-widest font-bold shadow-md"
             >
               {existingItem ? 'Save Record' : 'Commit Entry'}
             </button>
