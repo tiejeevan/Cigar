@@ -1,6 +1,7 @@
 'use client';
 
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { useMemo } from 'react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { InventoryItem } from '@/lib/db';
 
 interface OverviewChartProps {
@@ -8,30 +9,35 @@ interface OverviewChartProps {
 }
 
 export function OverviewChart({ items }: OverviewChartProps) {
-  if (!items || items.length === 0) {
+  const data = useMemo(() => {
+    const brandCounts: Record<string, number> = {};
+    
+    items.forEach(item => {
+      brandCounts[item.brand] = (brandCounts[item.brand] || 0) + item.quantity;
+    });
+
+    return Object.entries(brandCounts)
+      .map(([name, count]) => ({ name, value: count }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5); // top 5
+  }, [items]);
+
+  if (items.length === 0) {
     return (
-      <div className="h-40 flex items-center justify-center text-[#888] bg-[#14161C] border border-[#2A2A2A] text-[10px] uppercase tracking-widest">
-        No analytical data
+      <div className="h-64 flex items-center justify-center text-[#888] text-[10px] uppercase tracking-widest">
+        No data available
       </div>
     );
   }
 
-  // Group by brand
-  const chartData = items.reduce((acc, item) => {
-    const existing = acc.find(d => d.name === item.brand);
-    if (existing) {
-      existing.stock += item.quantity;
-    } else {
-      acc.push({ name: item.brand, stock: item.quantity });
-    }
-    return acc;
-  }, [] as { name: string; stock: number }[]).sort((a, b) => b.stock - a.stock);
-
   return (
-    <div className="h-64 w-full p-6 bg-[#14161C] border border-[#2A2A2A]">
-      <h3 className="text-[10px] uppercase tracking-[0.3em] text-[#D4AF37] mb-6 font-bold">Stock Distribution</h3>
-      <ResponsiveContainer width="100%" height="80%">
-        <BarChart data={chartData}>
+    <div className="h-64 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart
+          data={data}
+          margin={{ top: 20, right: 30, left: -20, bottom: 5 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="#2A2A2A" vertical={false} />
           <XAxis 
             dataKey="name" 
             axisLine={false}
@@ -42,20 +48,17 @@ export function OverviewChart({ items }: OverviewChartProps) {
             interval={0}
           />
           <YAxis 
-            hide
+            axisLine={false}
+            tickLine={false}
+            tick={{ fill: '#888', fontSize: 10 }}
           />
           <Tooltip 
-            cursor={{ fill: '#1F2127' }}
-            contentStyle={{ backgroundColor: '#0D0F13', border: '1px solid #2A2A2A', borderRadius: '0', color: '#E5E1DA', fontSize: '12px' }}
-            itemStyle={{ color: '#D4AF37' }}
+            cursor={{ fill: '#1A1C23' }}
+            contentStyle={{ backgroundColor: '#0D0F13', border: '1px solid #2A2A2A', borderRadius: 0 }}
+            itemStyle={{ color: '#D4AF37', fontSize: 12, fontWeight: 'bold' }}
+            labelStyle={{ color: '#888', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em' }}
           />
-          <Bar dataKey="stock" radius={[0, 0, 0, 0]}>
-            {
-              chartData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={index === 0 ? '#D4AF37' : '#888'} fillOpacity={index === 0 ? 1 : 0.6} />
-              ))
-            }
-          </Bar>
+          <Bar dataKey="value" fill="#D4AF37" radius={[2, 2, 0, 0]} maxBarSize={40} />
         </BarChart>
       </ResponsiveContainer>
     </div>

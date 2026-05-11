@@ -28,10 +28,6 @@ export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) { // 2MB limit
-        toast.error('Image size must be less than 2MB');
-        return;
-      }
       const reader = new FileReader();
       reader.onloadend = () => {
         setImage(reader.result as string);
@@ -73,7 +69,7 @@ export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
     const finalFlavor = flavor === 'Other' ? customFlavor : flavor;
 
     if (!finalBrand || !finalFlavor) {
-      toast.error('Brand and Flavor are required');
+      toast.error('Please specify both brand and flavor.');
       return;
     }
 
@@ -91,15 +87,15 @@ export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
 
       if (existingItem?.id) {
         await db.items.update(existingItem.id, item);
-        toast.success('Item updated');
+        toast.success('Inventory updated');
       } else {
         await db.items.add(item);
-        toast.success('Item added to inventory');
+        toast.success('Added to inventory');
       }
       onClose();
     } catch (error) {
       console.error(error);
-      toast.error('Failed to save item');
+      toast.error('Failed to save record.');
     }
   };
 

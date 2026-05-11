@@ -1,262 +1,223 @@
 'use client';
 
-import { useState, useEffect, Fragment } from 'react';
+import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, InventoryItem } from '@/lib/db';
 import { InventoryForm } from '@/components/inventory-form';
 import { OverviewChart } from '@/components/overview-chart';
-import { Plus, Package, Pencil, Trash2, PlusCircle, MinusCircle, Search } from 'lucide-react';
+import { Plus, Package, AlertTriangle, Archive, Search, Filter, Pencil, Trash2, ArrowUpDown } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Home() {
-  const [isAddFormOpen, setIsAddFormOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<InventoryItem | undefined>(undefined);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<InventoryItem | undefined>();
   const [searchQuery, setSearchQuery] = useState('');
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
+  const [filterBrand, setFilterBrand] = useState<string>('all');
+  
   const items = useLiveQuery(() => db.items.toArray()) || [];
+  
+  const filteredItems = items.filter(item => {
+    const matchesSearch = item.brand.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          item.flavor.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesBrand = filterBrand === 'all' || item.brand === filterBrand;
+    return matchesSearch && matchesBrand;
+  });
 
-  const totalStock = items.reduce((sum, item) => sum + item.quantity, 0);
+  const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
   const lowStockItems = items.filter(item => item.quantity <= item.reorderThreshold);
-
-  const filteredItems = items.filter(item => 
-    item.brand.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    item.flavor.toLowerCase().includes(searchQuery.toLowerCase())
-  ).sort((a, b) => b.updatedAt - a.updatedAt);
-
-  const groupedFilteredItems = filteredItems.reduce((acc, item) => {
-    if (!acc[item.brand]) {
-      acc[item.brand] = [];
-    }
-    acc[item.brand].push(item);
-    return acc;
-  }, {} as Record<string, InventoryItem[]>);
-
-  const brandTotals = items.reduce((acc, item) => {
-    acc[item.brand] = (acc[item.brand] || 0) + item.quantity;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const sortedBrands = Object.entries(brandTotals).sort((a, b) => b[1] - a[1]);
-
-  const handleUpdateQuantity = async (id: number, delta: number) => {
-    const item = items.find(i => i.id === id);
-    if (!item) return;
-
-    const newQuantity = Math.max(0, item.quantity + delta);
-    try {
-      await db.items.update(id, { quantity: newQuantity, updatedAt: Date.now() });
-    } catch (e) {
-      toast.error('Failed to update quantity');
-    }
-  };
+  const uniqueBrands = Array.from(new Set(items.map(i => i.brand)));
 
   const handleDelete = async (id: number) => {
-    if (window.confirm('Are you sure you want to delete this item?')) {
-      try {
-        await db.items.delete(id);
-        toast.success('Item deleted');
-      } catch (e) {
-        toast.error('Failed to delete item');
-      }
+    if (window.confirm('Are you certain you wish to delete this record?')) {
+      await db.items.delete(id);
+      toast.success('Record expunged');
     }
   };
 
   const openEditForm = (item: InventoryItem) => {
     setEditingItem(item);
-    setIsAddFormOpen(true);
+    setIsFormOpen(true);
   };
 
-  if (!mounted) {
-    return null; // prevent hydration mismatch from dexie
-  }
+  const openNewForm = () => {
+    setEditingItem(undefined);
+    setIsFormOpen(true);
+  };
 
-  const now = new Date();
-  const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+  const changeQuantity = async (id: number, delta: number, currentQty: number) => {
+    const newQty = Math.max(0, currentQty + delta);
+    await db.items.update(id, { quantity: newQty });
+  };
 
   return (
-    <>
-      <header className="h-20 border-b border-[#2A2A2A] bg-[#0D0F13] flex items-center justify-between px-6 lg:px-10 shrink-0">
-        <div className="flex items-center gap-4">
-          <div className="hidden sm:flex w-10 h-10 border border-[#D4AF37] items-center justify-center rotate-45">
-            <span className="-rotate-45 font-serif text-[#D4AF37] font-bold text-xl">C</span>
-          </div>
-          <h1 className="text-xl sm:text-2xl font-serif tracking-widest text-[#D4AF37]">CIGARILLO ARCHIVE</h1>
+    <div className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto flex flex-col pt-12 md:pt-20">
+      <header className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div>
+          <h1 className="text-4xl md:text-5xl font-serif text-[#D4AF37] italic tracking-tight mb-2">Cigaar Archive</h1>
+          <p className="text-[10px] uppercase tracking-[0.3em] text-[#888]">Inventory Management System v1.0</p>
         </div>
-        <div className="flex items-center gap-6 lg:gap-12">
-          <div className="text-right hidden sm:block">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-[#888] mb-1">Total Inventory</p>
-            <p className="text-lg lg:text-xl font-light">{totalStock} Units</p>
-          </div>
-          <div className="text-right hidden sm:block">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-[#888] mb-1">Low Stock Alerts</p>
-            <p className="text-lg lg:text-xl font-light text-[#C2410C]">
-              {lowStockItems.length < 10 ? `0${lowStockItems.length}` : lowStockItems.length} SKUs
-            </p>
-          </div>
-          <button 
-            onClick={() => { setEditingItem(undefined); setIsAddFormOpen(true); }}
-            className="px-4 lg:px-6 py-2 border border-[#D4AF37] text-[#D4AF37] text-xs tracking-widest uppercase hover:bg-[#D4AF37] hover:text-black transition-colors whitespace-nowrap"
-          >
-            Add New
-          </button>
-        </div>
+        <button 
+          onClick={openNewForm}
+          className="flex items-center gap-2 bg-[#D4AF37] text-black px-6 py-3 hover:bg-transparent hover:text-[#D4AF37] border border-[#D4AF37] transition-all duration-300 font-bold uppercase tracking-widest text-[10px]"
+        >
+          <Plus className="w-4 h-4" />
+          Log New Entry
+        </button>
       </header>
 
-      <main className="flex-1 flex overflow-hidden flex-col md:flex-row">
-        {/* Sidebar Analysis */}
-        <aside className="w-full md:w-80 border-r border-[#2A2A2A] p-6 lg:p-8 flex flex-col gap-8 lg:gap-10 bg-[#0D0F13] shrink-0 overflow-y-auto md:overflow-y-hidden md:min-h-0">
-          <section className="flex-shrink-0">
-            <h3 className="text-[10px] uppercase tracking-[0.3em] text-[#D4AF37] mb-6 font-bold">Brand Distribution</h3>
-            <div className="space-y-4">
-              {sortedBrands.slice(0, 4).map(([brand, count], idx) => {
-                const percent = totalStock > 0 ? (count / totalStock) * 100 : 0;
-                // Vary opacity based on idx for a cool effect like the design
-                let opacity = '1';
-                if (idx === 1) opacity = '0.7';
-                if (idx === 2) opacity = '0.4';
-                if (idx > 2) opacity = '0.2';
-                
-                return (
-                  <div key={brand} className="space-y-2">
-                    <div className="flex justify-between text-xs">
-                      <span>{brand}</span>
-                      <span className="text-[#888]">{percent.toFixed(0)}%</span>
-                    </div>
-                    <div className="h-1 bg-[#1F2127] rounded-full overflow-hidden">
-                      <div className="h-full bg-[#D4AF37] transition-all duration-500" style={{ width: `${percent}%`, opacity }}></div>
-                    </div>
-                  </div>
-                );
-              })}
-              {sortedBrands.length === 0 && <p className="text-xs text-[#888]">No data yet.</p>}
-            </div>
-            {sortedBrands.length > 0 && (
-              <div className="mt-8">
-                <OverviewChart items={items} />
-              </div>
-            )}
-          </section>
+      {/* Metrics Row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+        <div className="bg-[#0D0F13] border border-[#2A2A2A] p-6 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+            <Archive className="w-16 h-16 text-[#D4AF37]" />
+          </div>
+          <p className="text-[10px] uppercase tracking-widest text-[#888] mb-2">Total Arsenal</p>
+          <p className="text-4xl font-serif text-[#E5E1DA]">{totalItems}</p>
+        </div>
+        
+        <div className="bg-[#0D0F13] border border-[#2A2A2A] p-6 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+            <Package className="w-16 h-16 text-[#D4AF37]" />
+          </div>
+          <p className="text-[10px] uppercase tracking-widest text-[#888] mb-2">Unique SKUs</p>
+          <p className="text-4xl font-serif text-[#E5E1DA]">{items.length}</p>
+        </div>
 
-          <section className="flex-1 flex flex-col min-h-[200px]">
-            <h3 className="text-[10px] uppercase tracking-[0.3em] text-[#D4AF37] mb-4 font-bold">Procurement List</h3>
-            <div className="flex-1 bg-[#14161C] border border-[#2A2A2A] rounded p-4 space-y-4 overflow-y-auto">
-              {lowStockItems.length === 0 ? (
-                <p className="text-xs text-[#888]">Stock levels optimal. No reorders needed.</p>
-              ) : (
-                lowStockItems.sort((a,b) => a.quantity - b.quantity).map(item => (
-                  <div key={item.id} className="pb-3 border-b border-[#2A2A2A] last:border-0 last:pb-0">
-                    <p className="text-xs font-semibold">{item.brand} {item.flavor}</p>
-                    <p className={`text-[10px] ${item.quantity === 0 ? 'text-[#C2410C]' : 'text-[#A16207]'}`}>
-                      {item.quantity === 0 ? 'Out of Stock' : `Critically Low: ${item.quantity} units left`}
-                    </p>
-                    <p className="text-[10px] text-[#888] mt-1">Threshold: {item.reorderThreshold} Units</p>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-        </aside>
+        <div className={`bg-[#0D0F13] border border-[#2A2A2A] p-6 relative overflow-hidden group ${lowStockItems.length > 0 ? 'border-b-[#C2410C]' : ''}`}>
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+            <AlertTriangle className={`w-16 h-16 ${lowStockItems.length > 0 ? 'text-[#C2410C]' : 'text-[#D4AF37]'}`} />
+          </div>
+          <p className="text-[10px] uppercase tracking-widest text-[#888] mb-2">Low Stock Alerts</p>
+          <p className={`text-4xl font-serif ${lowStockItems.length > 0 ? 'text-[#C2410C]' : 'text-[#E5E1DA]'}`}>
+            {lowStockItems.length}
+          </p>
+        </div>
+      </div>
 
-        {/* Main Inventory Grid */}
-        <section className="flex-1 p-6 lg:p-10 bg-[#0A0B0E] overflow-y-auto content-start flex flex-col">
-          <div className="mb-6 flex justify-between items-end">
-            <div className="w-full max-w-sm relative flex-shrink-0">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#888]" />
-              <input
-                type="text"
-                placeholder="Search brand or flavor..."
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 flex-1">
+        
+        <div className="lg:col-span-2 flex flex-col gap-6">
+          <div className="flex flex-col sm:flex-row gap-4 items-center bg-[#0D0F13] border border-[#2A2A2A] p-2">
+            <div className="relative flex-1 w-full">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#444]" />
+              <input 
+                type="text" 
+                placeholder="Search archive..." 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-4 py-2 bg-[#14161C] border border-[#2A2A2A] rounded text-sm w-full focus:outline-none focus:border-[#D4AF37] text-[#E5E1DA] transition-colors"
+                className="w-full bg-transparent border-none text-sm text-[#E5E1DA] py-2 pl-10 pr-4 focus:outline-none placeholder:text-[#444] font-mono"
               />
             </div>
+            <div className="h-6 w-px bg-[#2A2A2A] hidden sm:block"></div>
+            <div className="flex items-center gap-2 px-2 w-full sm:w-auto">
+              <Filter className="w-4 h-4 text-[#444]" />
+              <select 
+                value={filterBrand}
+                onChange={(e) => setFilterBrand(e.target.value)}
+                className="bg-transparent border-none text-[#E5E1DA] text-sm py-2 focus:outline-none appearance-none cursor-pointer w-full text-center sm:text-left"
+              >
+                <option value="all">All Brands</option>
+                {uniqueBrands.map(b => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+              </select>
+            </div>
           </div>
-          
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 lg:gap-8 content-start h-max flex-1">
-            {Object.keys(groupedFilteredItems).length === 0 && (
-              <div className="col-span-1 xl:col-span-2 text-center py-20 text-[#888]">
-                {items.length === 0 ? 'Archive is empty. Click "Add New" to begin.' : 'No items match your search.'}
-              </div>
-            )}
-            
-            {Object.entries(groupedFilteredItems).map(([brand, brandItems]) => (
-              <Fragment key={brand}>
-                <div className="col-span-1 xl:col-span-2 flex items-center gap-4 mb-2 mt-4 first:mt-0">
-                  <h2 className="font-serif text-xl italic">{brand} Collection</h2>
-                  <div className="h-[1px] flex-1 bg-[#2D2D2D]"></div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {filteredItems.map(item => (
+              <div key={item.id} className="bg-[#0D0F13] border border-[#2A2A2A] p-5 group hover:border-[#D4AF37]/50 transition-colors flex gap-4">
+                {/* Image Placeholder or Actual Image */}
+                <div className="w-20 h-24 flex-shrink-0 bg-[#14161C] border border-[#2A2A2A] flex items-center justify-center overflow-hidden">
+                  {item.image ? (
+                    <img src={item.image} alt={item.brand} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                  ) : (
+                    <Package className="w-8 h-8 text-[#2A2A2A]" />
+                  )}
                 </div>
-                {brandItems.map(item => {
-                  const isLowStock = item.quantity <= item.reorderThreshold;
-                  return (
-                    <div key={item.id} className={`bg-[#14161C] border ${isLowStock ? 'border-l-4 border-l-[#C2410C] border-[#2A2A2A]' : 'border-[#2A2A2A]'} p-4 lg:p-5 flex gap-4 hover:border-[#D4AF37] transition-all group`}>
-                      <div className="w-20 h-20 lg:w-24 lg:h-24 bg-[#1F2127] flex-shrink-0 flex flex-col items-center justify-center text-[#444] border border-[#2A2A2A] relative overflow-hidden group-hover:border-[#D4AF37]/50 transition-colors">
-                        {item.image ? (
-                          <img src={item.image} alt={item.flavor} className="w-full h-full object-cover grayscale opacity-80 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-500" />
-                        ) : (
-                          <Package className="w-8 h-8 opacity-20" />
-                        )}
+                
+                <div className="flex-1 flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-2">
+                        <p className="text-[10px] text-[#D4AF37] uppercase tracking-widest mb-1">{item.flavor}</p>
+                        <span className="text-[8px] border border-[#2A2A2A] px-1.5 py-0.5 rounded-sm text-[#888] uppercase mb-1">{item.packType || 'Single'}</span>
                       </div>
-                      <div className="flex-1 flex flex-col justify-between">
-                        <div>
-                          <div className="flex justify-between items-start">
-                             <div className="flex items-center gap-2">
-                               <p className="text-[10px] text-[#D4AF37] uppercase tracking-widest mb-1">{item.flavor}</p>
-                               <span className="text-[8px] border border-[#2A2A2A] px-1.5 py-0.5 rounded-sm text-[#888] uppercase mb-1">{item.packType || 'Single'}</span>
-                             </div>
-                             <div className="flex gap-2">
-                               <button onClick={() => openEditForm(item)} className="text-[#888] hover:text-[#D4AF37] transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
-                               <button onClick={() => item.id && handleDelete(item.id)} className="text-[#888] hover:text-[#C2410C] transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                             </div>
-                          </div>
-                          <h4 className="text-base lg:text-lg font-serif mb-2 leading-tight">{item.brand} {item.flavor}</h4>
-                        </div>
-                        <div className="flex justify-between items-end">
-                          <div className="flex items-center gap-3">
-                             <button onClick={() => item.id && handleUpdateQuantity(item.id, -1)} className="text-[#555] hover:text-[#E5E1DA] transition-colors"><MinusCircle className="w-5 h-5" /></button>
-                             <p className={`text-xl lg:text-2xl font-light ${isLowStock ? 'text-[#C2410C]' : ''} min-w-[2ch] text-center`}>
-                               {item.quantity.toString().padStart(2, '0')}
-                             </p>
-                             <button onClick={() => item.id && handleUpdateQuantity(item.id, 1)} className="text-[#555] hover:text-[#E5E1DA] transition-colors"><PlusCircle className="w-5 h-5" /></button>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-[10px] uppercase text-[#888]">Target: {item.reorderThreshold}</p>
-                            {isLowStock ? (
-                              <p className="text-[10px] text-[#C2410C] font-bold uppercase tracking-tight">Restock Needed</p>
-                            ) : (
-                              <p className="text-[10px] text-green-500 font-bold tracking-widest mt-0.5">OPTIMAL</p>
-                            )}
-                          </div>
-                        </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => openEditForm(item)} className="text-[#888] hover:text-[#D4AF37] transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => item.id && handleDelete(item.id)} className="text-[#888] hover:text-[#C2410C] transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
                       </div>
                     </div>
-                  )
-                })}
-              </Fragment>
+                    <h3 className="text-xl font-serif text-[#E5E1DA] mb-1">{item.brand}</h3>
+                    {item.barcode && <p className="text-[9px] text-[#555] font-mono tracking-widest">SKU: {item.barcode}</p>}
+                  </div>
+                  
+                  <div className="flex justify-between items-end mt-4">
+                    <div className="flex items-center bg-[#14161C] border border-[#2A2A2A]">
+                      <button 
+                        onClick={() => item.id && changeQuantity(item.id, -1, item.quantity)}
+                        className="px-2 py-1 text-[#888] hover:text-[#D4AF37] transition-colors"
+                      >-</button>
+                      <span className="text-sm font-mono px-3 text-[#E5E1DA] min-w-[2.5rem] text-center">{item.quantity}</span>
+                      <button 
+                        onClick={() => item.id && changeQuantity(item.id, 1, item.quantity)}
+                        className="px-2 py-1 text-[#888] hover:text-[#D4AF37] transition-colors"
+                      >+</button>
+                    </div>
+                    
+                    {item.quantity <= item.reorderThreshold && (
+                      <span className="text-[10px] uppercase tracking-widest text-[#C2410C] flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#C2410C] animate-pulse"></span>
+                        Reorder
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
             ))}
+            
+            {filteredItems.length === 0 && (
+              <div className="col-span-full py-16 text-center border border-dashed border-[#2A2A2A]">
+                <p className="text-[10px] uppercase tracking-widest text-[#888]">No records found matching criteria.</p>
+              </div>
+            )}
           </div>
-        </section>
-      </main>
-
-      {/* Status Footer */}
-      <footer className="h-8 bg-[#0D0F13] border-t border-[#2A2A2A] px-6 lg:px-10 flex items-center justify-between shrink-0">
-        <div className="flex gap-6 items-center">
-          <p className="text-[9px] uppercase tracking-widest text-[#555] hidden sm:block">DB Status: <span className="text-green-800 font-bold">Synced IndexedDB</span></p>
-          <p className="text-[9px] uppercase tracking-widest text-[#555]">Last Scan: {timeString}</p>
         </div>
-        <p className="text-[9px] uppercase tracking-[0.2em] text-[#D4AF37] hidden sm:block">Inventory Management System V2.4</p>
-      </footer>
 
-      {isAddFormOpen && (
-        <InventoryForm 
-          onClose={() => setIsAddFormOpen(false)} 
-          existingItem={editingItem}
-        />
-      )}
-    </>
+        {/* Analytics Sidebar */}
+        <div className="lg:col-span-1">
+          <div className="bg-[#0D0F13] border border-[#2A2A2A] p-6 sticky top-8">
+            <h3 className="text-[10px] uppercase tracking-widest text-[#888] mb-6 flex items-center gap-2">
+              <ArrowUpDown className="w-3 h-3" />
+              Volume Distribution
+            </h3>
+            
+            <OverviewChart items={items} />
+
+            <div className="mt-8 pt-6 border-t border-[#2A2A2A]">
+              <h3 className="text-[10px] uppercase tracking-widest text-[#888] mb-4">Critical Depletions</h3>
+              <div className="space-y-3">
+                {lowStockItems.length > 0 ? (
+                  lowStockItems.map(item => (
+                    <div key={`low-${item.id}`} className="flex justify-between items-center text-sm">
+                      <span className="text-[#E5E1DA] font-serif">{item.brand} <span className="text-[#888] text-xs font-sans">({item.flavor})</span></span>
+                      <span className="text-[#C2410C] font-mono">{item.quantity}/{item.reorderThreshold}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-[#444] italic">All stock levels optimal.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {isFormOpen && <InventoryForm onClose={() => setIsFormOpen(false)} existingItem={editingItem} />}
+
+      <footer className="mt-20 pt-8 border-t border-[#2A2A2A] text-center">
+         <p className="text-[9px] uppercase tracking-[0.4em] text-[#444]">Confidential & Proprietary</p>
+      </footer>
+    </div>
   );
 }
