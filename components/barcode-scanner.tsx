@@ -49,7 +49,7 @@ export function BarcodeScanner({ onResult, onClose }: BarcodeScannerProps) {
     ).catch(err => {
       console.error("Scanner failed to start", err);
       if (isMounted) {
-        setErrorMsg("Failed to access camera. Please check permissions.");
+        setErrorMsg("Camera permission denied. If using the preview, please open the app in a new tab (using the icon in the top right), or check your browser permissions.");
       }
     });
 

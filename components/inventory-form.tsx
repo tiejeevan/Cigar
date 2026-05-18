@@ -18,6 +18,7 @@ export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
   const [packType, setPackType] = useState(existingItem?.packType || 'Single');
   const [quantity, setQuantity] = useState(existingItem?.quantity?.toString() || '0');
   const [reorderThreshold, setReorderThreshold] = useState(existingItem?.reorderThreshold?.toString() || '10');
+  const [price, setPrice] = useState(existingItem?.price?.toString() || '0.00');
   const [barcode, setBarcode] = useState(existingItem?.barcode || '');
   const [image, setImage] = useState<string | undefined>(existingItem?.image);
   
@@ -92,6 +93,7 @@ export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
         packType: packType,
         quantity: parseInt(quantity, 10) || 0,
         reorderThreshold: parseInt(reorderThreshold, 10) || 0,
+        price: parseFloat(price) || 0,
         image,
         barcode,
         updatedAt: Date.now(),
@@ -199,27 +201,38 @@ export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
               </div>
 
               {/* Quantities */}
-              <div className="grid grid-cols-2 gap-6 bg-[#14161C] border border-[#2A2A2A] p-2 rounded-xl shadow-sm relative overflow-hidden">
-                <div className="absolute left-1/2 top-4 bottom-4 w-[1px] bg-[#2A2A2A] -translate-x-1/2"></div>
-                <div className="space-y-4 p-4 pb-2 z-10 text-center">
-                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#888] font-semibold">Current Units</label>
+              <div className="grid grid-cols-3 gap-4 bg-[#14161C] border border-[#2A2A2A] p-2 rounded-xl shadow-sm relative overflow-hidden">
+                <div className="space-y-4 p-4 pb-2 z-10 text-center border-r border-[#2A2A2A]">
+                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#888] font-semibold">Current</label>
                   <input
                     type="number"
                     min="0"
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value)}
-                    className="w-full bg-[#0D0F13] border border-[#2A2A2A] rounded-xl text-[#D4AF37] p-3 text-3xl font-serif text-center focus:outline-none focus:border-[#D4AF37] transition-colors shadow-inner"
+                    className="w-full bg-[#0D0F13] border border-[#2A2A2A] rounded-xl text-[#D4AF37] p-3 text-2xl font-serif text-center focus:outline-none focus:border-[#D4AF37] transition-colors shadow-inner"
                     required
                   />
                 </div>
-                <div className="space-y-4 p-4 pb-2 z-10 text-center">
-                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#888] font-semibold">Reorder Target</label>
+                <div className="space-y-4 p-4 pb-2 z-10 text-center border-r border-[#2A2A2A]">
+                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#888] font-semibold">Reorder</label>
                   <input
                     type="number"
                     min="0"
                     value={reorderThreshold}
                     onChange={(e) => setReorderThreshold(e.target.value)}
-                    className="w-full bg-[#0D0F13] border border-[#2A2A2A] rounded-xl text-[#E5E1DA] p-3 text-3xl font-serif text-center focus:outline-none focus:border-[#D4AF37] transition-colors shadow-inner"
+                    className="w-full bg-[#0D0F13] border border-[#2A2A2A] rounded-xl text-[#E5E1DA] p-3 text-2xl font-serif text-center focus:outline-none focus:border-[#D4AF37] transition-colors shadow-inner"
+                    required
+                  />
+                </div>
+                <div className="space-y-4 p-4 pb-2 z-10 text-center">
+                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#888] font-semibold">Price ($)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    className="w-full bg-[#0D0F13] border border-[#2A2A2A] rounded-xl text-[#22C55E] p-3 text-2xl font-serif text-center focus:outline-none focus:border-[#D4AF37] transition-colors shadow-inner"
                     required
                   />
                 </div>
@@ -246,6 +259,7 @@ export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
                     <input
                       type="file"
                       accept="image/*"
+                      capture="environment"
                       onChange={handleImageUpload}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     />
