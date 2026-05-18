@@ -28,7 +28,28 @@ export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setImage(reader.result as string);
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const targetSize = 256;
+          
+          // Crop to square
+          const size = Math.min(img.width, img.height);
+          const sx = (img.width - size) / 2;
+          const sy = (img.height - size) / 2;
+
+          canvas.width = targetSize;
+          canvas.height = targetSize;
+          const ctx = canvas.getContext('2d');
+          
+          if (ctx) {
+            ctx.drawImage(img, sx, sy, size, size, 0, 0, targetSize, targetSize);
+            setImage(canvas.toDataURL('image/jpeg', 0.8));
+          } else {
+            setImage(reader.result as string);
+          }
+        };
+        img.src = reader.result as string;
       };
       reader.readAsDataURL(file);
     }
@@ -93,10 +114,10 @@ export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
   return (
     <>
       <div className="fixed inset-0 z-50 bg-[#0A0B0E]/90 flex items-end sm:items-center justify-center sm:p-4 backdrop-blur-sm">
-        <div className="bg-[#0D0F13] border-t sm:border border-[#2A2A2A] w-full max-w-xl flex flex-col max-h-[95vh] sm:max-h-[90vh] rounded-t-xl sm:rounded-none overflow-hidden">
-          <div className="flex justify-between items-center p-5 sm:p-6 border-b border-[#2A2A2A] sticky top-0 bg-[#0D0F13] z-10">
+        <div className="bg-[#0D0F13] sm:border border-[#2A2A2A] w-full max-w-xl flex flex-col max-h-[95vh] sm:max-h-[90vh] rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-2xl">
+          <div className="flex justify-between items-center p-6 sm:p-6 border-b border-[#2A2A2A] sticky top-0 bg-[#0D0F13] z-10">
             <h2 className="text-2xl font-serif text-[#D4AF37] italic">{existingItem ? 'Edit Entry' : 'New Archive Entry'}</h2>
-            <button onClick={onClose} className="p-2 sm:p-3 hover:text-[#D4AF37] transition-colors text-[#888] active:scale-95">
+            <button onClick={onClose} className="p-3 hover:text-[#D4AF37] hover:bg-[#1F2127] rounded-full transition-all text-[#888] active:scale-95">
               <X className="w-6 h-6" />
             </button>
           </div>
@@ -112,12 +133,12 @@ export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
                     placeholder="Scan or enter manually"
                     value={barcode}
                     onChange={(e) => setBarcode(e.target.value)}
-                    className="flex-1 bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-4 text-base focus:outline-none focus:border-[#D4AF37] transition-colors font-mono rounded-none"
+                    className="flex-1 bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-4 text-base focus:outline-none focus:border-[#D4AF37] transition-colors font-mono rounded-xl shadow-sm"
                   />
                   <button
                     type="button"
                     onClick={() => setIsScanning(true)}
-                    className="px-6 bg-[#1F2127] border border-[#2A2A2A] text-[#D4AF37] hover:border-[#D4AF37] transition-colors flex items-center justify-center active:scale-95 shadow-sm"
+                    className="px-6 bg-[#1F2127] border border-[#2A2A2A] text-[#D4AF37] hover:border-[#D4AF37] transition-colors flex items-center justify-center rounded-xl active:scale-95 shadow-sm"
                     title="Scan Barcode"
                   >
                     <ScanBarcode className="w-6 h-6" />
@@ -135,7 +156,7 @@ export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
                     placeholder="e.g. Swisher Sweets"
                     value={brand}
                     onChange={(e) => setBrand(e.target.value)}
-                    className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-4 text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-none"
+                    className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-4 text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl shadow-sm"
                     required
                   />
                   <datalist id="brand-options">
@@ -151,7 +172,7 @@ export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
                     placeholder="e.g. Grape"
                     value={flavor}
                     onChange={(e) => setFlavor(e.target.value)}
-                    className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-4 text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-none"
+                    className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-4 text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl shadow-sm"
                     required
                   />
                   <datalist id="flavor-options">
@@ -161,15 +182,15 @@ export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
               </div>
 
               {/* Format Segmented Control */}
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-semibold">Format</label>
-                <div className="flex bg-[#14161C] border border-[#2A2A2A] w-full p-1 gap-1">
+                <div className="flex bg-[#14161C] border border-[#2A2A2A] w-full p-1.5 gap-1.5 rounded-xl shadow-sm">
                   {['Single', 'Box', 'Carton'].map(pt => (
                     <button
                       key={pt}
                       type="button"
                       onClick={() => setPackType(pt)}
-                      className={`flex-1 py-4 text-sm tracking-widest uppercase transition-all duration-200 ${packType === pt ? 'bg-[#2A2A2A] text-[#D4AF37] font-bold shadow-sm' : 'text-[#888] hover:text-[#E5E1DA]'}`}
+                      className={`flex-1 py-4 text-sm tracking-widest uppercase transition-all duration-200 rounded-lg ${packType === pt ? 'bg-[#2A2A2A] text-[#D4AF37] font-bold shadow-md scale-[1.02]' : 'text-[#888] hover:text-[#E5E1DA] hover:bg-[#1F2127]'}`}
                     >
                       {pt}
                     </button>
@@ -178,26 +199,27 @@ export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
               </div>
 
               {/* Quantities */}
-              <div className="grid grid-cols-2 gap-6 bg-[#14161C] border border-[#2A2A2A] p-2">
-                <div className="space-y-2 p-3 pb-0">
-                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#888] font-semibold text-center">Current Units</label>
+              <div className="grid grid-cols-2 gap-6 bg-[#14161C] border border-[#2A2A2A] p-2 rounded-xl shadow-sm relative overflow-hidden">
+                <div className="absolute left-1/2 top-4 bottom-4 w-[1px] bg-[#2A2A2A] -translate-x-1/2"></div>
+                <div className="space-y-4 p-4 pb-2 z-10 text-center">
+                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#888] font-semibold">Current Units</label>
                   <input
                     type="number"
                     min="0"
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value)}
-                    className="w-full bg-transparent text-[#D4AF37] p-2 text-3xl font-serif text-center focus:outline-none transition-colors border-b border-transparent focus:border-[#D4AF37]/50"
+                    className="w-full bg-[#0D0F13] border border-[#2A2A2A] rounded-xl text-[#D4AF37] p-3 text-3xl font-serif text-center focus:outline-none focus:border-[#D4AF37] transition-colors shadow-inner"
                     required
                   />
                 </div>
-                <div className="space-y-2 p-3 pb-0 border-l border-[#2A2A2A]">
-                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#888] font-semibold text-center">Reorder Target</label>
+                <div className="space-y-4 p-4 pb-2 z-10 text-center">
+                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#888] font-semibold">Reorder Target</label>
                   <input
                     type="number"
                     min="0"
                     value={reorderThreshold}
                     onChange={(e) => setReorderThreshold(e.target.value)}
-                    className="w-full bg-transparent text-[#E5E1DA] p-2 text-3xl font-serif text-center focus:outline-none transition-colors border-b border-transparent focus:border-[#D4AF37]/50"
+                    className="w-full bg-[#0D0F13] border border-[#2A2A2A] rounded-xl text-[#E5E1DA] p-3 text-3xl font-serif text-center focus:outline-none focus:border-[#D4AF37] transition-colors shadow-inner"
                     required
                   />
                 </div>
@@ -208,17 +230,17 @@ export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
                 <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-semibold">Visual Asset</label>
                 {image ? (
                   <div className="relative inline-block mt-2 w-full sm:w-auto text-center">
-                    <img src={image} alt="Preview" className="h-40 w-40 object-cover border border-[#2A2A2A] bg-[#14161C] mx-auto sm:mx-0 shadow-lg" />
+                    <img src={image} alt="Preview" className="h-40 w-40 object-cover border border-[#2A2A2A] bg-[#14161C] mx-auto sm:mx-0 shadow-lg rounded-xl" />
                     <button
                       type="button"
                       onClick={removeImage}
-                      className="absolute -top-3 sm:-top-3 right-1/2 translate-x-[50px] sm:translate-x-0 sm:-right-3 bg-[#0D0F13] border border-[#D4AF37] text-[#D4AF37] p-2 hover:bg-[#D4AF37] hover:text-black transition-colors rounded-full sm:rounded-none shadow-md"
+                      className="absolute -top-3 right-1/2 translate-x-[70px] sm:translate-x-0 sm:-right-3 bg-[#0D0F13] border border-[#D4AF37] text-[#D4AF37] p-2 hover:bg-[#D4AF37] hover:text-black transition-colors rounded-full shadow-md z-10"
                     >
-                      <X className="w-4 h-4" />
+                      <X className="w-5 h-5" />
                     </button>
                   </div>
                 ) : (
-                  <div className="mt-2 border border-dashed border-[#2A2A2A] p-8 flex flex-col items-center justify-center bg-[#14161C] hover:border-[#D4AF37]/50 transition-colors cursor-pointer relative group active:bg-[#1F2127]">
+                  <div className="mt-2 border-2 border-dashed border-[#2A2A2A] rounded-xl p-8 flex flex-col items-center justify-center bg-[#14161C] hover:border-[#D4AF37]/50 hover:bg-[#1A1C23] transition-colors cursor-pointer relative group active:bg-[#1F2127]">
                     <UploadCloud className="w-10 h-10 text-[#444] mb-3 group-hover:text-[#D4AF37]/50 transition-colors" />
                     <span className="text-xs uppercase tracking-widest text-[#888] font-semibold">Upload Image</span>
                     <input
@@ -233,18 +255,18 @@ export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
             </form>
           </div>
           
-          <div className="p-5 sm:p-6 border-t border-[#2A2A2A] bg-[#0D0F13] flex gap-4 flex-shrink-0">
+          <div className="p-5 sm:p-6 border-t border-[#2A2A2A] bg-[#0D0F13] flex gap-4 flex-shrink-0 z-10">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-4 border border-[#2A2A2A] text-[#888] bg-transparent hover:text-[#E5E1DA] active:bg-[#1F2127] transition-colors text-xs uppercase tracking-widest font-semibold"
+              className="flex-1 py-4 border border-[#2A2A2A] rounded-xl text-[#888] bg-transparent hover:text-[#E5E1DA] hover:bg-[#1A1C23] active:bg-[#1F2127] transition-all text-xs uppercase tracking-widest font-semibold"
             >
               Cancel
             </button>
             <button
               type="submit"
               form="inventory-form"
-              className="flex-[2] py-4 bg-[#D4AF37] text-black border border-[#D4AF37] hover:bg-[#E5C25A] active:bg-[#B3932E] transition-all text-xs uppercase tracking-widest font-bold shadow-md"
+              className="flex-[2] py-4 rounded-xl bg-[#D4AF37] text-black border border-[#D4AF37] hover:bg-[#E5C25A] active:bg-[#B3932E] transition-all text-xs uppercase tracking-widest font-bold shadow-lg shadow-[#D4AF37]/10"
             >
               {existingItem ? 'Save Record' : 'Commit Entry'}
             </button>
