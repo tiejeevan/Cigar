@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, InventoryItem } from '@/lib/db';
 import { InventoryForm } from '@/components/inventory-form';
@@ -8,12 +8,19 @@ import { OverviewChart } from '@/components/overview-chart';
 import { Plus, Package, AlertTriangle, Archive, Search, Filter, Pencil, Trash2, ArrowUpDown, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
-export function InventorySection() {
+export function InventorySection({ pendingBarcode, clearPendingBarcode }: { pendingBarcode?: string | null, clearPendingBarcode?: () => void }) {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | undefined>();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterBrand, setFilterBrand] = useState<string>('all');
   const [itemToDelete, setItemToDelete] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (pendingBarcode) {
+      setEditingItem(undefined);
+      setIsFormOpen(true);
+    }
+  }, [pendingBarcode]);
   
   const items = useLiveQuery(() => db.items.toArray()) || [];
   
@@ -239,7 +246,16 @@ export function InventorySection() {
         </div>
       </div>
 
-      {isFormOpen && <InventoryForm onClose={() => setIsFormOpen(false)} existingItem={editingItem} />}
+      {isFormOpen && (
+        <InventoryForm 
+          onClose={() => {
+            setIsFormOpen(false);
+            if (clearPendingBarcode) clearPendingBarcode();
+          }} 
+          existingItem={editingItem} 
+          initialBarcode={pendingBarcode || undefined}
+        />
+      )}
 
       {itemToDelete !== null && (
         <div className="fixed inset-0 z-[70] bg-[#0A0B0E]/90 flex items-center justify-center p-4 backdrop-blur-sm">

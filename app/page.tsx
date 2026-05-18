@@ -8,6 +8,7 @@ import { Package, ShoppingCart, ShoppingBag } from 'lucide-react';
 
 export default function Home() {
   const [currentView, setCurrentView] = useState<'pos' | 'inventory' | 'orders'>('pos');
+  const [pendingBarcode, setPendingBarcode] = useState<string | null>(null);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#0A0B0E]">
@@ -52,8 +53,20 @@ export default function Home() {
 
         {/* Main Content Area */}
         <main className="flex-1">
-          {currentView === 'pos' && <PosSection />}
-          {currentView === 'inventory' && <InventorySection />}
+          {currentView === 'pos' && (
+            <PosSection 
+              onBarcodeNotFound={(barcode) => {
+                setPendingBarcode(barcode);
+                setCurrentView('inventory');
+              }} 
+            />
+          )}
+          {currentView === 'inventory' && (
+            <InventorySection 
+              pendingBarcode={pendingBarcode}
+              clearPendingBarcode={() => setPendingBarcode(null)}
+            />
+          )}
           {currentView === 'orders' && <OrdersSection />}
         </main>
 

@@ -7,7 +7,7 @@ import { Search, Plus, Minus, CreditCard, ShoppingCart, Package, ScanBarcode } f
 import { toast } from 'sonner';
 import { BarcodeScanner } from './barcode-scanner';
 
-export function PosSection() {
+export function PosSection({ onBarcodeNotFound }: { onBarcodeNotFound?: (barcode: string) => void }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [cart, setCart] = useState<Array<{ id: number; brand: string; flavor: string; qty: number; price: number }>>([]);
@@ -22,18 +22,25 @@ export function PosSection() {
 
   const handleScanResult = useCallback(async (result: string) => {
     setIsScanning(false);
-    setSearchQuery(result);
     // Find if we already have this barcode
     try {
       const existing = await db.items.where('barcode').equals(result).first();
       if (existing) {
         toast.info('Item matched!');
         addToCart(existing);
+        setSearchQuery(''); // Clear the input field
       } else {
-        toast.error('Barcode not found in inventory. You can add it as a custom item.');
+        toast.error('Barcode not found in inventory.');
+        if (onBarcodeNotFound) {
+          onBarcodeNotFound(result);
+        } else {
+          setSearchQuery(result); // Fallback to setting query only if not handled
+        }
       }
-    } catch (e) {}
-  }, []);
+    } catch (e) {
+      console.error(e);
+    }
+  }, [onBarcodeNotFound]);
 
   const addToCart = async (item: any) => {
     let itemPrice = item.price || 0;
@@ -106,6 +113,20 @@ export function PosSection() {
                 type="text" 
                 placeholder="Scan barcode or search products..." 
                 value={searchQuery}
+                onKeyDown={async (e) => {
+                  if (e.key === 'Enter' && searchQuery) {
+                    // Check if it's an exact barcode match
+                    const existing = await db.items.where('barcode').equals(searchQuery).first();
+                    if (existing) {
+                      toast.info('Item matched!');
+                      addToCart(existing);
+                      setSearchQuery('');
+                    } else if (/^[0-9]+$/.test(searchQuery)) {
+                       // Only assume it's a barcode if it's all digits
+                       handleScanResult(searchQuery);
+                    }
+                  }
+                }}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-[#14161C] border border-[#2A2A2A] rounded-xl text-base text-[#E5E1DA] py-4 pl-12 pr-4 focus:outline-none focus:border-[#D4AF37] transition-colors font-mono shadow-inner"
               />

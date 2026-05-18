@@ -10,16 +10,17 @@ import { BarcodeScanner } from './barcode-scanner';
 interface InventoryFormProps {
   onClose: () => void;
   existingItem?: InventoryItem;
+  initialBarcode?: string;
 }
 
-export function InventoryForm({ onClose, existingItem }: InventoryFormProps) {
+export function InventoryForm({ onClose, existingItem, initialBarcode }: InventoryFormProps) {
   const [brand, setBrand] = useState(existingItem?.brand || '');
   const [flavor, setFlavor] = useState(existingItem?.flavor || '');
   const [packType, setPackType] = useState(existingItem?.packType || 'Single');
   const [quantity, setQuantity] = useState(existingItem?.quantity?.toString() || '0');
   const [reorderThreshold, setReorderThreshold] = useState(existingItem?.reorderThreshold?.toString() || '10');
   const [price, setPrice] = useState(existingItem?.price?.toString() || '0.00');
-  const [barcode, setBarcode] = useState(existingItem?.barcode || '');
+  const [barcode, setBarcode] = useState(existingItem?.barcode || initialBarcode || '');
   const [image, setImage] = useState<string | undefined>(existingItem?.image);
   
   const [isScanning, setIsScanning] = useState(false);
