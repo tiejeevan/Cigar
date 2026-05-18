@@ -5,7 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, InventoryItem } from '@/lib/db';
 import { InventoryForm } from '@/components/inventory-form';
 import { OverviewChart } from '@/components/overview-chart';
-import { Plus, Package, AlertTriangle, Archive, Search, Filter, Pencil, Trash2, ArrowUpDown } from 'lucide-react';
+import { Plus, Package, AlertTriangle, Archive, Search, Filter, Pencil, Trash2, ArrowUpDown, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Home() {
@@ -13,6 +13,7 @@ export default function Home() {
   const [editingItem, setEditingItem] = useState<InventoryItem | undefined>();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterBrand, setFilterBrand] = useState<string>('all');
+  const [itemToDelete, setItemToDelete] = useState<number | null>(null);
   
   const items = useLiveQuery(() => db.items.toArray()) || [];
   
@@ -27,10 +28,15 @@ export default function Home() {
   const lowStockItems = items.filter(item => item.quantity <= item.reorderThreshold);
   const uniqueBrands = Array.from(new Set(items.map(i => i.brand)));
 
-  const handleDelete = async (id: number) => {
-    if (window.confirm('Are you certain you wish to delete this record?')) {
-      await db.items.delete(id);
+  const handleDeleteRequest = (id: number) => {
+    setItemToDelete(id);
+  };
+
+  const confirmDelete = async () => {
+    if (itemToDelete) {
+      await db.items.delete(itemToDelete);
       toast.success('Record expunged');
+      setItemToDelete(null);
     }
   };
 
@@ -145,7 +151,7 @@ export default function Home() {
                       </div>
                       <div className="flex gap-1 bg-[#14161C] rounded-lg p-1">
                         <button onClick={() => openEditForm(item)} className="p-2 text-[#888] hover:text-[#D4AF37] hover:bg-[#2A2A2A] rounded-md transition-all active:scale-95"><Pencil className="w-4 h-4" /></button>
-                        <button onClick={() => item.id && handleDelete(item.id)} className="p-2 text-[#888] hover:text-[#C2410C] hover:bg-[#2A2A2A] rounded-md transition-all active:scale-95"><Trash2 className="w-4 h-4" /></button>
+                        <button onClick={() => item.id && handleDeleteRequest(item.id)} className="p-2 text-[#888] hover:text-[#C2410C] hover:bg-[#2A2A2A] rounded-md transition-all active:scale-95"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
                     <h3 className="text-2xl font-serif text-[#E5E1DA] leading-tight mb-1">{item.brand}</h3>
@@ -214,6 +220,32 @@ export default function Home() {
       </div>
 
       {isFormOpen && <InventoryForm onClose={() => setIsFormOpen(false)} existingItem={editingItem} />}
+
+      {itemToDelete !== null && (
+        <div className="fixed inset-0 z-[70] bg-[#0A0B0E]/90 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl w-full max-w-sm flex flex-col overflow-hidden shadow-2xl">
+            <div className="p-6 text-center space-y-4">
+              <AlertCircle className="w-12 h-12 text-[#C2410C] mx-auto" />
+              <h3 className="text-xl font-serif text-[#E5E1DA]">Confirm Deletion</h3>
+              <p className="text-sm text-[#888]">Are you certain you wish to delete this record? This action cannot be undone.</p>
+            </div>
+            <div className="flex border-t border-[#2A2A2A]">
+              <button 
+                onClick={() => setItemToDelete(null)}
+                className="flex-1 py-4 text-xs tracking-widest uppercase font-semibold text-[#888] hover:bg-[#14161C] transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={confirmDelete}
+                className="flex-1 py-4 text-xs tracking-widest uppercase font-bold text-[#C2410C] hover:bg-[#C2410C]/10 border-l border-[#2A2A2A] transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <footer className="mt-20 pt-8 border-t border-[#2A2A2A] text-center">
          <p className="text-[9px] uppercase tracking-[0.4em] text-[#444]">Confidential & Proprietary</p>
