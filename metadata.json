@@ -1,6 +1,10 @@
 {
-  "name": "Restored App",
-  "description": "The workspace was reset and restored.",
-  "requestFramePermissions": [],
-  "majorCapabilities": []
+  "name": "Cigaar Archive",
+  "description": "Inventory Management System for Cigarillos",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
