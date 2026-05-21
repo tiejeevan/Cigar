@@ -3,12 +3,14 @@
 import { useState, useEffect } from 'react';
 import { db, InventoryItem, useLiveQuery } from '@/lib/db';
 import { InventoryForm } from '@/components/inventory-form';
+import { BulkInventoryForm } from '@/components/bulk-inventory-form';
 import { OverviewChart } from '@/components/overview-chart';
-import { Plus, Package, AlertTriangle, Archive, Search, Filter, Pencil, Trash2, ArrowUpDown, AlertCircle } from 'lucide-react';
+import { Plus, Package, AlertTriangle, Archive, Search, Filter, Pencil, Trash2, ArrowUpDown, AlertCircle, Layers } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function InventorySection({ pendingBarcode, clearPendingBarcode }: { pendingBarcode?: string | null, clearPendingBarcode?: () => void }) {
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isBulkFormOpen, setIsBulkFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | undefined>();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterBrand, setFilterBrand] = useState<string>('all');
@@ -66,18 +68,29 @@ export function InventorySection({ pendingBarcode, clearPendingBarcode }: { pend
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex justify-between items-end mb-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-4">
         <div>
           <h2 className="text-3xl font-serif text-[#E5E1DA]">Inventory Management</h2>
           <p className="text-[10px] uppercase tracking-widest text-[#888] mt-1">Manage stock and records</p>
         </div>
-        <button 
-          onClick={openNewForm}
-          className="flex items-center gap-2 bg-[#D4AF37] text-black px-6 py-3 hover:bg-[#E5C25A] active:bg-[#B3932E] transition-all rounded-xl font-bold uppercase tracking-widest text-xs shadow-lg"
-        >
-          <Plus className="w-4 h-4" />
-          Add Item
-        </button>
+        <div className="flex gap-3 w-full sm:w-auto">
+          <button 
+            type="button"
+            onClick={() => setIsBulkFormOpen(true)}
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-[#14161C] border border-[#2A2A2A] hover:border-[#D4AF37]/50 hover:bg-[#1A1C23] text-[#D4AF37] px-4 py-3 transition-all rounded-xl font-bold uppercase tracking-widest text-[10px] sm:text-xs shadow-md active:scale-95 cursor-pointer"
+          >
+            <Layers className="w-4 h-4" />
+            Bulk Add Brand
+          </button>
+          <button 
+            type="button"
+            onClick={openNewForm}
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-[#D4AF37] text-black px-5 py-3 hover:bg-[#E5C25A] active:bg-[#B3932E] transition-all rounded-xl font-bold uppercase tracking-widest text-[10px] sm:text-xs shadow-lg active:scale-95 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            Add Single
+          </button>
+        </div>
       </div>
 
       {/* Metrics Row */}
@@ -271,6 +284,12 @@ export function InventorySection({ pendingBarcode, clearPendingBarcode }: { pend
           }} 
           existingItem={editingItem} 
           initialBarcode={pendingBarcode || undefined}
+        />
+      )}
+
+      {isBulkFormOpen && (
+        <BulkInventoryForm 
+          onClose={() => setIsBulkFormOpen(false)} 
         />
       )}
 
