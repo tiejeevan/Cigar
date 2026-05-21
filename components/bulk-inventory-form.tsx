@@ -1,9 +1,22 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { db, InventoryItem } from '@/lib/db';
 import { DEFAULT_BRANDS, PRODUCT_CATEGORIES } from '@/lib/constants';
-import { UploadCloud, X, Plus, Trash2, ScanBarcode, Check, Layers, Coins, AlertCircle, ChevronDown, Trash, RefreshCw } from 'lucide-react';
+import { 
+  UploadCloud, 
+  X, 
+  Plus, 
+  Trash2, 
+  ScanBarcode, 
+  Check, 
+  Layers, 
+  Coins, 
+  ArrowLeft, 
+  ChevronRight,
+  Package,
+  Image as ImageIcon
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { BarcodeScanner } from './barcode-scanner';
 import { motion, AnimatePresence } from 'motion/react';
@@ -12,13 +25,14 @@ interface BulkInventoryFormProps {
   onClose: () => void;
 }
 
-interface BulkFlavorEntry {
-  id: string; // temp client-side ID
+interface QueuedFlavor {
+  id: string;
   flavor: string;
   quantity: number;
   price: number;
   reorderThreshold: number;
   barcode: string;
+  image?: string; // individual picture for each flavor!
 }
 
 // Preset flavor databases by category to empower lightning-fast clicks
@@ -48,25 +62,50 @@ const CATEGORY_FLAVOR_PRESETS: Record<string, string[]> = {
 };
 
 export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
-  // Shared brand variables
+  // Wizard flow state
+  // Step 1: brand & specifications
+  // Step 2: add flavors with price, quantity, and picture
+  const [step, setStep] = useState<'brand' | 'flavors'>('brand');
+
+  // STEP 1 FIELDS (Brand specifiers)
   const [brand, setBrand] = useState('');
   const [category, setCategory] = useState('Cigarillos');
   const [packType, setPackType] = useState('Single');
-  const [defaultPrice, setDefaultPrice] = useState('1.29');
-  const [defaultReorder, setDefaultReorder] = useState('10');
-  const [sharedImage, setSharedImage] = useState<string | undefined>(undefined);
+  const [basePrice, setBasePrice] = useState('1.29');
+  const [baseReorder, setBaseReorder] = useState('10');
 
-  // Custom Flavor name current text input
-  const [customFlavorInput, setCustomFlavorInput] = useState('');
+  // STEP 2 FIELDS (Current active flavor editor values)
+  const [activeFlavorName, setActiveFlavorName] = useState('');
+  const [activeFlavorPrice, setActiveFlavorPrice] = useState('1.29');
+  const [activeFlavorQty, setActiveFlavorQty] = useState(20); // standard bulk batch start qty
+  const [activeFlavorBarcode, setActiveFlavorBarcode] = useState('');
+  const [activeFlavorImage, setActiveFlavorImage] = useState<string | undefined>(undefined);
 
-  // Active bulk flavors
-  const [flavorEntries, setFlavorEntries] = useState<BulkFlavorEntry[]>([]);
+  // Active queued list of complete flavors
+  const [queuedFlavors, setQueuedFlavors] = useState<QueuedFlavor[]>([]);
 
-  // Barcode scanning state
-  const [activeScanningFlavId, setActiveScanningFlavId] = useState<string | null>(null);
+  // Scanning bar state
+  const [isScanningActive, setIsScanningActive] = useState<boolean>(false);
 
-  // Handle shared image upload
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Helper mapping category preset choices
+  const dynamicPresets = useMemo(() => {
+    return CATEGORY_FLAVOR_PRESETS[category] || CATEGORY_FLAVOR_PRESETS['Other'];
+  }, [category]);
+
+  // Adjust active flavor price via fast mobile buttons
+  const adjustActivePrice = (amount: number) => {
+    const current = parseFloat(activeFlavorPrice) || 0;
+    const finalVal = Math.max(0, current + amount);
+    setActiveFlavorPrice(finalVal.toFixed(2));
+  };
+
+  // Adjust active flavor quantity via fast mobile buttons
+  const adjustActiveQty = (amount: number) => {
+    setActiveFlavorQty(prev => Math.max(0, prev + amount));
+  };
+
+  // Convert uploaded image to Base64 thumbnail compressed
+  const handleActiveImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
@@ -86,9 +125,10 @@ export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
           
           if (ctx) {
             ctx.drawImage(img, sx, sy, size, size, 0, 0, targetSize, targetSize);
-            setSharedImage(canvas.toDataURL('image/jpeg', 0.8));
+            setActiveFlavorImage(canvas.toDataURL('image/jpeg', 0.8));
+            toast.success('Flavor photo captured.');
           } else {
-            setSharedImage(reader.result as string);
+            setActiveFlavorImage(reader.result as string);
           }
         };
         img.src = reader.result as string;
@@ -97,582 +137,622 @@ export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
     }
   };
 
-  const removeSharedImage = () => setSharedImage(undefined);
-
-  // Suggested presets based on category
-  const dynamicPresets = useMemo(() => {
-    return CATEGORY_FLAVOR_PRESETS[category] || CATEGORY_FLAVOR_PRESETS['Other'];
-  }, [category]);
-
-  // Toggle dynamic preset
-  const handleTogglePreset = (presetFlavor: string) => {
-    const existsIndex = flavorEntries.findIndex(f => f.flavor.toLowerCase() === presetFlavor.toLowerCase());
-    
-    if (existsIndex >= 0) {
-      // Remove it
-      setFlavorEntries(prev => prev.filter((_, idx) => idx !== existsIndex));
-    } else {
-      // Add it
-      const newEntry: BulkFlavorEntry = {
-        id: Math.random().toString(36).substring(2, 9),
-        flavor: presetFlavor,
-        quantity: 0,
-        price: parseFloat(defaultPrice) || 1.29,
-        reorderThreshold: parseInt(defaultReorder, 10) || 10,
-        barcode: ''
-      };
-      setFlavorEntries(prev => [...prev, newEntry]);
-    }
+  // Capture barcode and inject into current flavor item
+  const handleScanResult = (decodedBarcode: string) => {
+    setActiveFlavorBarcode(decodedBarcode);
+    setIsScanningActive(false);
+    toast.success(`Barcode connected: ${decodedBarcode}`);
   };
 
-  // Select all dynamic presets
-  const handleSelectAllPresets = () => {
-    const defaultPrVal = parseFloat(defaultPrice) || 1.29;
-    const defaultReVal = parseInt(defaultReorder, 10) || 10;
-    
-    const entriesToAdd: BulkFlavorEntry[] = [];
-    
-    dynamicPresets.forEach(preset => {
-      const exists = flavorEntries.some(f => f.flavor.toLowerCase() === preset.toLowerCase());
-      if (!exists) {
-        entriesToAdd.push({
-          id: Math.random().toString(36).substring(2, 9),
-          flavor: preset,
-          quantity: 0,
-          price: defaultPrVal,
-          reorderThreshold: defaultReVal,
-          barcode: ''
-        });
-      }
-    });
-
-    if (entriesToAdd.length === 0) {
-      toast.info('All preset flavors are already in your queue.');
+  // Add the current active flavor details into the queued array
+  const handleAddFlavorToQueue = () => {
+    const cleanedName = activeFlavorName.trim();
+    if (!cleanedName) {
+      toast.error('Specify a flavor name, or tap presets below!');
       return;
     }
 
-    setFlavorEntries(prev => [...prev, ...entriesToAdd]);
-    toast.success(`Added ${entriesToAdd.length} dynamic preset flavors to catalog.`);
-  };
-
-  // Clear current active queue
-  const handleClearQueue = () => {
-    if (flavorEntries.length === 0) return;
-    setFlavorEntries([]);
-    toast.success('Cleared bulk queue.');
-  };
-
-  // Add a fully custom flavor line from input
-  const handleAddCustomFlavor = () => {
-    const trimmed = customFlavorInput.trim();
-    if (!trimmed) return;
-
-    const exists = flavorEntries.some(f => f.flavor.toLowerCase() === trimmed.toLowerCase());
+    // Guard duplicate
+    const exists = queuedFlavors.some(q => q.flavor.toLowerCase() === cleanedName.toLowerCase());
     if (exists) {
-      toast.info(`"${trimmed}" is already added to the batch list.`);
+      toast.error(`"${cleanedName}" flavor is already added to this batch.`);
       return;
     }
 
-    const newEntry: BulkFlavorEntry = {
+    const priceVal = parseFloat(activeFlavorPrice) || 1.29;
+
+    const newFlavor: QueuedFlavor = {
       id: Math.random().toString(36).substring(2, 9),
-      flavor: trimmed,
-      quantity: 0,
-      price: parseFloat(defaultPrice) || 1.29,
-      reorderThreshold: parseInt(defaultReorder, 10) || 10,
-      barcode: ''
+      flavor: cleanedName,
+      quantity: activeFlavorQty,
+      price: priceVal,
+      reorderThreshold: parseInt(baseReorder, 10) || 10,
+      barcode: activeFlavorBarcode.trim(),
+      image: activeFlavorImage
     };
 
-    setFlavorEntries(prev => [...prev, newEntry]);
-    setCustomFlavorInput('');
+    setQueuedFlavors(prev => [...prev, newFlavor]);
+    
+    // Reset specific active editor fields, saving price & image fallback as convenient default
+    setActiveFlavorName('');
+    setActiveFlavorBarcode('');
+    setActiveFlavorImage(undefined);
+    toast.success(`Queued: ${cleanedName}`);
   };
 
-  // Bulk remove single flavor entry
-  const handleRemoveFlavorEntry = (id: string) => {
-    setFlavorEntries(prev => prev.filter(f => f.id !== id));
+  // Instant fast-add preset tap handler
+  const handleTapPreset = (presetFlavor: string) => {
+    // If flavor name empty, prefill it! Or if they tap, prefill and keep price/image
+    setActiveFlavorName(presetFlavor);
   };
 
-  // Modify individual flavor values
-  const handleUpdateFlavorEntry = (id: string, updates: Partial<BulkFlavorEntry>) => {
-    setFlavorEntries(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
-  };
-
-  // Adjust all active items price or reorder if defaults change
-  const handleApplyDefaultsToAll = () => {
-    const pr = parseFloat(defaultPrice) || 0.00;
-    const re = parseInt(defaultReorder, 10) || 0;
-    setFlavorEntries(prev => prev.map(f => ({
-      ...f,
-      price: pr,
-      reorderThreshold: re
-    })));
-    toast.success('Successfully synchronized default prices and reorder levels and thresholds!');
-  };
-
-  // Barcode scanning result mapping standard
-  const handleScanResult = (decodedBarcode: string) => {
-    if (activeScanningFlavId) {
-      handleUpdateFlavorEntry(activeScanningFlavId, { barcode: decodedBarcode });
-      toast.success(`Barcode connected to flavor: ${decodedBarcode}`);
-    }
-    setActiveScanningFlavId(null);
-  };
-
-  // Save entire list sequentially
-  const handleCommitBulk = async (e: React.FormEvent) => {
-    e.preventDefault();
-
+  // Complete and save to Postgres
+  const handleDatabaseSubmit = async () => {
     if (!brand.trim()) {
-      toast.error('Please specify a valid Brand.');
+      toast.error('Please input a valid Brand Name.');
+      setStep('brand');
       return;
     }
 
-    if (flavorEntries.length === 0) {
-      toast.error('Please add at least one Flavor to import.');
+    if (queuedFlavors.length === 0) {
+      toast.error('Queue is empty! Add at least one flavor first.');
       return;
     }
 
     try {
-      let successCount = 0;
-      toast.loading('Writing database records to Neon Postgres...', { id: 'bulk-commit' });
+      toast.loading('Importing product records into databases...', { id: 'neon-bulk-write' });
+      let counter = 0;
 
-      for (const entry of flavorEntries) {
-        const item: InventoryItem = {
+      for (const flav of queuedFlavors) {
+        const item: Omit<InventoryItem, 'id'> = {
           brand: brand.trim(),
-          flavor: entry.flavor.trim(),
+          flavor: flav.flavor.trim(),
           category: category,
           packType: packType,
-          quantity: entry.quantity,
-          reorderThreshold: entry.reorderThreshold,
-          price: entry.price,
-          image: sharedImage,
-          barcode: entry.barcode.trim() || undefined,
+          quantity: flav.quantity,
+          reorderThreshold: flav.reorderThreshold,
+          price: flav.price,
+          barcode: flav.barcode || undefined,
+          image: flav.image, // Saved customized individual photo!
           updatedAt: Date.now()
         };
 
         await db.items.add(item);
-        successCount++;
+        counter++;
       }
 
-      toast.success(`Successfully added ${successCount} flavor records in bulk!`, { id: 'bulk-commit' });
+      toast.success(`Successfully dispatched ${counter} product records to database!`, { id: 'neon-bulk-write' });
       onClose();
-    } catch (error) {
-      console.error(error);
-      toast.error('An error occurred committing batch records.', { id: 'bulk-commit' });
+    } catch (e) {
+      console.error(e);
+      toast.error('An error occurred writing catalog items.', { id: 'neon-bulk-write' });
     }
   };
 
-  return (
-    <>
-      <div className="fixed inset-0 z-50 bg-[#0A0B0E]/90 flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-md overflow-hidden">
-        <motion.div 
-          initial={{ opacity: 0, y: 100 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 100 }}
-          transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-          className="bg-[#0D0F13] border-t sm:border border-[#2D2D2D] w-full max-w-5xl flex flex-col h-[93vh] sm:h-[88vh] max-h-[95vh] rounded-t-[2.5rem] sm:rounded-3xl overflow-hidden shadow-2xl"
-        >
-          
-          {/* Main header block */}
-          <div className="flex justify-between items-center px-6 py-5 border-b border-[#222] bg-[#0E1015] z-10 flex-shrink-0">
-            <div>
-              <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
-                <span className="text-[9px] uppercase font-mono tracking-[0.2em] bg-[#D4AF37]/10 text-[#D4AF37] px-2 py-0.5 rounded border border-[#D4AF37]/20 font-bold">SMOKE OS</span>
-                <span className="text-[9px] uppercase font-mono tracking-[0.2em] bg-[#00E5FF]/10 text-[#00E5FF] px-2 py-0.5 rounded border border-[#00E5FF]/20 font-bold">FAST BULK REGISTER</span>
-              </div>
-              <h2 className="text-xl sm:text-2xl font-serif text-[#E5E1DA] leading-none tracking-tight">Bulk Brand Deployer</h2>
-            </div>
-            <button 
-              type="button" 
-              onClick={onClose} 
-              className="p-2 sm:p-2.5 hover:text-[#D4AF37] hover:bg-[#1E2026] text-[#888] rounded-full transition-all active:scale-95 border border-transparent hover:border-[#333]"
-            >
-              <X className="w-5 h-5 sm:w-6 sm:h-6" />
-            </button>
+  // Screen 1: Brand details
+  const renderBrandStep = () => {
+    return (
+      <div className="space-y-6 pt-2">
+        <div>
+          <h3 className="text-sm font-semibold uppercase tracking-widest text-[#888] mb-1">Step 1: Brand Configuration</h3>
+          <p className="text-xs text-[#555] font-serif italic">First, specify the manufacturer and default settings for your batch.</p>
+        </div>
+
+        {/* Enter Brand name with easy clear button / text field */}
+        <div className="space-y-2">
+          <label className="block text-xs uppercase tracking-[0.2em] text-[#666] font-bold">Write Brand / Company Name</label>
+          <div className="relative">
+            <input
+              type="text"
+              required
+              maxLength={120}
+              placeholder="e.g. Dutch Masters, Swisher, Slapwoods..."
+              value={brand}
+              onChange={(e) => setBrand(e.target.value)}
+              className="w-full bg-[#14161C] border border-[#222] text-[#E5E1DA] focus:text-[#D4AF37] px-4 py-4 text-lg focus:outline-none focus:border-[#D4AF37] transition-all rounded-2xl font-serif"
+            />
+            {brand && (
+              <button 
+                type="button"
+                onClick={() => setBrand('')}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-[#555] hover:text-[#E2DFD2] p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
-          
-          {/* Scrollable contents split into 2 visual columns */}
-          <div className="overflow-y-auto flex-1 bg-[#090A0D] flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-[#1F1F1F]">
-            
-            {/* Left Box: Shared Blueprint Specs */}
-            <div className="w-full lg:w-[360px] p-6 space-y-6 flex-shrink-0 bg-[#0C0E12]">
-              <div className="flex items-center justify-between border-b border-[#222] pb-3">
-                <h3 className="text-xs uppercase tracking-[0.2em] font-bold text-[#888] flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-[#D4AF37]" />
-                  1. Brand Identity
-                </h3>
-                <span className="text-[10px] uppercase font-mono text-[#444] font-semibold">Step 1 of 2</span>
-              </div>
+        </div>
 
-              <div className="space-y-4">
-                {/* Brand Selection with Datatable Support */}
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#666] font-bold">Brand or Manufacturer</label>
-                  <input
-                    list="bulk-brand-options-modern"
-                    type="text"
-                    required
-                    maxLength={100}
-                    placeholder="e.g. Swisher Sweets, Dutch Masters"
-                    value={brand}
-                    onChange={(e) => setBrand(e.target.value)}
-                    className="w-full bg-[#14161C] border border-[#222] text-[#E5E1DA] px-4 py-3 text-base md:text-sm focus:outline-none focus:border-[#D4AF37] transition-all rounded-xl font-medium focus:ring-1 focus:ring-[#D4AF37]/50"
-                  />
-                  <datalist id="bulk-brand-options-modern">
-                    {DEFAULT_BRANDS.map(b => <option key={b} value={b} />)}
-                  </datalist>
-                </div>
+        {/* Brand name quick buttons */}
+        <div className="space-y-2">
+          <span className="block text-[10px] uppercase font-mono text-[#555] font-bold">Quick Select Brand:</span>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {DEFAULT_BRANDS.map(b => (
+              <button
+                key={b}
+                type="button"
+                onClick={() => {
+                  setBrand(b);
+                  // Dynamic autofill base settings for custom brands
+                  if (b === 'Backwoods' || b === 'Slapwoods') {
+                    setBasePrice('6.99');
+                    setPackType('Box');
+                  } else {
+                    setBasePrice('1.29');
+                    setPackType('Single');
+                  }
+                }}
+                className={`py-3 px-2 text-xs rounded-xl font-mono uppercase tracking-wider text-center transition-all border ${brand === b ? 'bg-[#D4AF37]/20 border-[#D4AF37] text-[#D4AF37] font-bold shadow-lg shadow-[#D4AF37]/5 scale-[1.02]' : 'bg-[#14161C] border-[#222]/60 hover:border-[#333] text-[#888]'}`}
+              >
+                {b}
+              </button>
+            ))}
+          </div>
+        </div>
 
-                {/* Category Selector */}
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#666] font-bold">General Category</label>
-                  <div className="relative">
-                    <select
-                      value={category}
-                      onChange={(e) => {
-                        setCategory(e.target.value);
-                        setFlavorEntries([]); // Reset standard queries
-                      }}
-                      className="w-full bg-[#14161C] border border-[#222] text-[#E5E1DA] px-4 py-3 text-base md:text-sm focus:outline-none focus:border-[#D4AF37] transition-all rounded-xl appearance-none cursor-pointer pr-10 font-medium"
-                    >
-                      {PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <ChevronDown className="w-4 h-4 text-[#666] absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  </div>
-                </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
+          {/* Category touch grid selector */}
+          <div className="space-y-2">
+            <label className="block text-xs uppercase tracking-[0.2em] text-[#666] font-bold">Category</label>
+            <div className="grid grid-cols-2 gap-2 max-h-[190px] overflow-y-auto pr-1">
+              {PRODUCT_CATEGORIES.slice(0, 8).map(cat => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setCategory(cat)}
+                  className={`py-2.5 px-2 text-[10px] tracking-wide uppercase rounded-xl transition-all border font-bold ${category === cat ? 'bg-[#1D2128] border-[#D4AF37]/80 text-[#D4AF37]' : 'bg-[#14161C] border-[#222]/60 text-[#666] hover:text-[#888]'}`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
 
-                {/* Format / Packaging Selection */}
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#666] font-bold">Packaging / Sell Type</label>
-                  <div className="grid grid-cols-3 bg-[#111318] border border-[#222] p-1 gap-1 rounded-xl">
-                    {['Single', 'Box', 'Carton'].map(pt => (
-                      <button
-                        key={pt}
-                        type="button"
-                        onClick={() => setPackType(pt)}
-                        className={`py-2 text-[10px] tracking-widest uppercase transition-all rounded-lg font-bold ${packType === pt ? 'bg-[#1E2128] border border-[#333] text-[#D4AF37]' : 'text-[#666] hover:text-[#AAA]'}`}
-                      >
-                        {pt}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Shared Defaults Section */}
-                <div className="bg-[#111216]/50 border border-[#222] p-4 rounded-xl space-y-3.5 shadow-inner">
-                  <span className="block text-[9px] uppercase tracking-[0.15em] text-[#666] font-bold text-center border-b border-[#222] pb-1.5">
-                    Shared Row Defaults
-                  </span>
-                  
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1 text-center">
-                      <label className="block text-[9px] uppercase tracking-[0.1em] text-[#666]">Retail Price</label>
-                      <div className="relative">
-                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-mono text-[#D4AF37]">$</span>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={defaultPrice}
-                          onChange={(e) => setDefaultPrice(e.target.value)}
-                          className="w-full bg-[#14161C] border border-[#222] rounded-lg text-right text-[#22C55E] p-2 text-base md:text-sm font-serif font-bold focus:outline-none focus:border-[#D4AF37]"
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-1 text-center">
-                      <label className="block text-[9px] uppercase tracking-[0.1em] text-[#666]">Alert At Qty</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={defaultReorder}
-                        onChange={(e) => setDefaultReorder(e.target.value)}
-                        className="w-full bg-[#14161C] border border-[#222] rounded-lg text-center text-[#E5E1DA] p-2 text-base md:text-sm font-mono focus:outline-none focus:border-[#D4AF37]"
-                      />
-                    </div>
-                  </div>
-
-                  {flavorEntries.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleApplyDefaultsToAll}
-                      className="w-full py-2 bg-[#1B1D23] hover:bg-[#252831] hover:text-[#D4AF37] border border-[#2A2D36]/60 text-[#888] rounded-lg text-[9px] font-mono uppercase tracking-widest transition-all duration-150 flex items-center justify-center gap-1 cursor-pointer active:scale-95"
-                    >
-                      <RefreshCw className="w-3 h-3" />
-                      Sync Defaults to active list
-                    </button>
-                  )}
-                </div>
-
-                {/* Shared Image / Logo Option */}
-                <div className="space-y-2 pt-1">
-                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#666] font-bold">Shared Photo (Fallback)</label>
-                  {sharedImage ? (
-                    <div className="relative inline-block w-full text-center">
-                      <img src={sharedImage} alt="Shared Logotype" className="h-24 w-24 object-cover border border-[#2A2A2A] bg-[#14161C] mx-auto shadow-md rounded-xl" />
-                      <button
-                        type="button"
-                        onClick={removeSharedImage}
-                        className="absolute top-1 right-2 bg-black/80 border border-red-500/30 text-red-400 p-1.5 hover:bg-red-500 hover:text-white transition-colors rounded-full shadow-lg z-10"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="border border-dashed border-[#333] rounded-xl p-4.5 flex flex-col items-center justify-center bg-[#14161C]/20 hover:bg-[#14161C]/50 hover:border-[#D4AF37]/50 transition-all cursor-pointer relative group overflow-hidden min-h-[100px]">
-                      <UploadCloud className="w-7 h-7 text-[#444] mb-1 group-hover:text-[#D4AF37] transition-colors duration-150" />
-                      <span className="text-[9px] uppercase tracking-wider text-[#666] font-bold font-mono">Upload Brand Picture</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        onChange={handleImageUpload}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                      />
-                    </div>
-                  )}
-                </div>
+          {/* Formats touch grid selector */}
+          <div className="space-y-2 flex flex-col justify-between">
+            <div className="space-y-2">
+              <label className="block text-xs uppercase tracking-[0.2em] text-[#666] font-bold">Packaging / Format</label>
+              <div className="grid grid-cols-3 gap-2">
+                {['Single', 'Box', 'Carton'].map(pt => (
+                  <button
+                    key={pt}
+                    type="button"
+                    onClick={() => setPackType(pt)}
+                    className={`py-3 text-[10px] tracking-widest uppercase transition-all rounded-xl font-bold border ${packType === pt ? 'bg-[#1E2128] border-[#D4AF37]/80 text-[#D4AF37]' : 'bg-[#14161C] border-[#222]/60 text-[#666]'}`}
+                  >
+                    {pt}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Right Box: Dynamic Flavors Builder */}
-            <div className="flex-1 p-5 sm:p-6 flex flex-col overflow-hidden min-h-[350px]">
-              <div className="flex items-center justify-between border-b border-[#222] pb-3 flex-shrink-0">
-                <h3 className="text-xs uppercase tracking-[0.2em] font-bold text-[#888] flex items-center gap-2">
-                  <Coins className="w-4 h-4 text-[#D4AF37]" />
-                  2. Deploy Flavor Catalog
-                </h3>
-                <span className="text-[10px] font-mono text-[#D4AF37] bg-[#D4AF37]/10 px-2.5 py-0.5 rounded-full border border-[#D4AF37]/20 font-bold">
-                  {flavorEntries.length} Items In Export
-                </span>
+            {/* Default values preset helpers */}
+            <div className="grid grid-cols-2 gap-3 bg-[#111317] border border-[#222] p-3 rounded-xl mt-3">
+              <div className="text-center">
+                <span className="block text-[9px] uppercase tracking-wider text-[#555] font-bold mb-1">Base Price ($)</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={basePrice}
+                  onChange={(e) => {
+                    setBasePrice(e.target.value);
+                    setActiveFlavorPrice(e.target.value);
+                  }}
+                  className="w-full bg-[#14161C] border border-[#222] text-center text-emerald-500 font-serif font-bold p-1 rounded-lg text-sm"
+                />
+              </div>
+              <div className="text-center">
+                <span className="block text-[9px] uppercase tracking-wider text-[#555] font-bold mb-1">Alert Level</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={baseReorder}
+                  onChange={(e) => setBaseReorder(e.target.value)}
+                  className="w-full bg-[#14161C] border border-[#222] text-center text-[#E5E1DA] font-mono p-1 rounded-lg text-sm"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Big tactile navigation trigger */}
+        <button
+          type="button"
+          onClick={() => {
+            if (!brand.trim()) {
+              toast.error('Write or select a Brand Name first.');
+              return;
+            }
+            setStep('flavors');
+          }}
+          className="w-full py-4.5 bg-[#D4AF37] hover:bg-[#E5C25A] text-black rounded-2xl flex items-center justify-center gap-2 font-bold uppercase tracking-wider text-xs shadow-xl active:scale-95 transition-all mt-6"
+        >
+          <span>Define brand flavors for "{brand}"</span>
+          <ChevronRight className="w-5 h-5 stroke-[3px]" />
+        </button>
+      </div>
+    );
+  };
+
+  // Screen 2: Insert flavors with individual prices & pictures & queue them
+  const renderFlavorsStep = () => {
+    return (
+      <div className="space-y-6 flex flex-col h-full overflow-hidden">
+        
+        {/* Brand spec description header with Back navigation block */}
+        <div className="flex justify-between items-center bg-[#111317]/80 border border-[#222] px-4 py-3 rounded-2xl flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setStep('brand')}
+              className="p-2 bg-[#1A1C22] border border-[#333] hover:border-[#D4AF37]/50 rounded-xl text-[#888] hover:text-[#D4AF37] active:scale-95 transition-all"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <div>
+              <p className="text-[9px] uppercase font-mono tracking-wider text-[#666] font-bold">Deploying Brand</p>
+              <h4 className="text-base font-serif text-[#E5E1DA] leading-none font-bold italic">{brand}</h4>
+            </div>
+          </div>
+          <div className="text-right">
+            <span className="text-[10px] bg-[#D4AF37]/10 text-[#D4AF37] px-2.5 py-1 rounded-lg border border-[#D4AF37]/10 font-bold uppercase tracking-wider">
+              {category} • {packType}
+            </span>
+          </div>
+        </div>
+
+        {/* The active Flavor Input Block */}
+        <div className="bg-[#14161C]/50 border border-[#222]/80 rounded-2.5xl p-4 sm:p-5 flex-shrink-0 space-y-4">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs uppercase tracking-widest font-bold text-[#888] flex items-center gap-1.5">
+              <Plus className="w-4 h-4 text-[#D4AF37]" />
+              Flavor Blueprint
+            </h4>
+            <span className="text-[10px] uppercase font-mono text-[#444] font-semibold">Multiple pictures supported</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Top Row: Flavor name text field & fast presets */}
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <span className="block text-[9px] uppercase tracking-wider text-[#555] font-bold">1. Flavor Name</span>
+                <input
+                  type="text"
+                  placeholder="e.g. Russian Cream, Sweet, Mango..."
+                  value={activeFlavorName}
+                  onChange={(e) => setActiveFlavorName(e.target.value)}
+                  className="w-full bg-[#0D0F13] border border-[#222] text-[#E5E1DA] focus:text-[#D4AF37] px-3.5 py-3 rounded-xl font-serif text-base focus:outline-none focus:border-[#D4AF37] transition-colors"
+                />
               </div>
 
-              {/* Presets Grid Selector block */}
-              <div className="py-3 px-3.5 my-4 bg-[#111216]/60 border border-[#222] rounded-2xl flex-shrink-0 space-y-2">
-                <div className="flex justify-between items-center bg-[#14161C]/50 p-1.5 rounded-lg border border-[#222]/30">
-                  <p className="text-[9px] uppercase tracking-widest text-[#666] font-bold font-mono">Select {category} Flavors:</p>
-                  
-                  {/* Preset quick action helpers for fast addition */}
-                  <div className="flex gap-1.5">
-                    <button
-                      type="button"
-                      onClick={handleSelectAllPresets}
-                      className="px-2.5 py-1 bg-[#D4AF37]/10 hover:bg-[#D4AF37] border border-[#D4AF37]/30 text-[#D4AF37] hover:text-black transition-all rounded text-[9px] uppercase font-mono font-bold active:scale-95 cursor-pointer"
-                    >
-                      All Presets
-                    </button>
-                    {flavorEntries.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={handleClearQueue}
-                        className="px-2.5 py-1 bg-red-500/10 hover:bg-red-600 border border-red-500/20 text-red-400 hover:text-white transition-all rounded text-[9px] uppercase font-mono font-bold active:scale-95 cursor-pointer"
-                      >
-                        Clear Queue
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-1.5 max-h-[110px] sm:max-h-[130px] overflow-y-auto pr-1">
+              {/* Instant dynamic presets tap cards */}
+              <div className="space-y-1">
+                <span className="block text-[8px] uppercase tracking-wider text-[#555] font-bold">Quick presets (Tap to prefill name)</span>
+                <div className="flex flex-wrap gap-1.5 max-h-[85px] overflow-y-auto pr-1">
                   {dynamicPresets.map(preset => {
-                    const isAdded = flavorEntries.some(f => f.flavor.toLowerCase() === preset.toLowerCase());
+                    const isSelected = activeFlavorName.toLowerCase() === preset.toLowerCase();
                     return (
                       <button
                         key={preset}
                         type="button"
-                        onClick={() => handleTogglePreset(preset)}
-                        className={`px-3 py-1.5 text-xs rounded-xl border transition-all duration-150 flex items-center gap-1 cursor-pointer select-none active:scale-95 text-base md:text-xs ${isAdded ? 'bg-[#D4AF37]/20 border-[#D4AF37] text-[#D4AF37] font-bold' : 'bg-[#14161C] border-[#222] text-[#888] hover:text-[#E2DFD2] hover:border-[#444]'}`}
+                        onClick={() => handleTapPreset(preset)}
+                        className={`px-2.5 py-1 text-[10px] rounded-lg border transition-all select-none cursor-pointer active:scale-95 ${isSelected ? 'bg-[#D4AF37]/20 border-[#D4AF37] text-[#D4AF37] font-bold' : 'bg-[#0D0F12] border-[#222] text-[#666] hover:text-[#AAA]'}`}
                       >
-                        {isAdded && <Check className="w-3 h-3 stroke-[3px]" />}
                         {preset}
                       </button>
                     );
                   })}
                 </div>
               </div>
-
-              {/* Custom flavored enter row */}
-              <div className="flex gap-2.5 mb-4 flex-shrink-0">
-                <input
-                  type="text"
-                  placeholder="Type specialized custom flavor... (then hit Enter)"
-                  value={customFlavorInput}
-                  onChange={(e) => setCustomFlavorInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddCustomFlavor();
-                    }
-                  }}
-                  className="flex-1 bg-[#14161C] border border-[#222] text-[#E5E1DA] px-4 py-3 text-base md:text-sm focus:outline-none focus:border-[#D4AF37] transition-all rounded-xl placeholder:text-[#444] focus:ring-1 focus:ring-[#D4AF37]/30"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddCustomFlavor}
-                  className="bg-[#1A1C22] border border-[#333] hover:border-[#D4AF37] hover:bg-[#20222A] text-[#D4AF37] px-4 rounded-xl flex items-center justify-center transition-all active:scale-95 shrink-0"
-                >
-                  <Plus className="w-5 h-5 shrink-0" />
-                  <span className="hidden sm:inline ml-1 text-xs uppercase tracking-widest font-bold">Add Item</span>
-                </button>
-              </div>
-
-              {/* Scrollable list representing active flavors catalog */}
-              <div className="flex-1 overflow-y-auto space-y-2.5 min-h-[140px] pr-1.5 pb-4">
-                <AnimatePresence initial={false}>
-                  {flavorEntries.length > 0 ? (
-                    flavorEntries.map((entry, index) => (
-                      <motion.div 
-                        key={entry.id}
-                        initial={{ opacity: 0, height: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, height: 'auto', scale: 1 }}
-                        exit={{ opacity: 0, height: 0, scale: 0.95 }}
-                        transition={{ duration: 0.15 }}
-                        className="bg-[#13151A] border border-[#222]/80 hover:border-[#333] rounded-2xl p-4 flex flex-col md:flex-row gap-3 items-stretch md:items-center relative shadow-sm"
-                      >
-                        {/* Index identifier */}
-                        <div className="hidden md:block text-[10px] font-mono text-[#555] font-bold w-6 text-center select-none">
-                          {index + 1}
-                        </div>
-
-                        {/* Flavor Name input control */}
-                        <div className="flex-1 space-y-1">
-                          <span className="md:hidden text-[9px] uppercase tracking-wider text-[#555] font-mono font-bold">Flavor Name</span>
-                          <input
-                            type="text"
-                            required
-                            value={entry.flavor}
-                            onChange={(e) => handleUpdateFlavorEntry(entry.id, { flavor: e.target.value })}
-                            className="bg-transparent border-b border-[#222] md:border-none text-base md:text-sm text-[#E5E1DA] focus:text-[#D4AF37] py-0.5 focus:outline-none focus:border-[#D4AF37] w-full font-serif font-bold tracking-wide"
-                          />
-                        </div>
-
-                        {/* Flex containers wrapper for price, quant and barcode inside narrow screens */}
-                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:flex md:items-center gap-4">
-                          
-                          {/* Quantity Counter Stepper */}
-                          <div className="flex flex-col gap-1 w-full md:w-[130px]">
-                            <span className="text-[9px] uppercase tracking-wider text-[#555] font-mono font-bold">In-Stock Qty</span>
-                            <div className="flex bg-[#0B0C0E] border border-[#222] rounded-xl p-0.5 items-center justify-between">
-                              <button
-                                type="button"
-                                onClick={() => handleUpdateFlavorEntry(entry.id, { quantity: Math.max(0, entry.quantity - 1) })}
-                                className="w-9 h-9 rounded-lg text-[#888] hover:text-[#D4AF37] hover:bg-[#1A1C22] flex items-center justify-center font-bold text-lg active:scale-90 transition-all cursor-pointer select-none"
-                              >
-                                -
-                              </button>
-                              <input
-                                type="number"
-                                min="0"
-                                value={entry.quantity}
-                                onChange={(e) => handleUpdateFlavorEntry(entry.id, { quantity: parseInt(e.target.value, 10) || 0 })}
-                                className="w-12 bg-transparent text-center text-sm font-mono text-[#D4AF37] focus:outline-none font-bold"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => handleUpdateFlavorEntry(entry.id, { quantity: entry.quantity + 1 })}
-                                className="w-9 h-9 rounded-lg text-[#888] hover:text-[#D4AF37] hover:bg-[#1A1C22] flex items-center justify-center font-bold text-lg active:scale-90 transition-all cursor-pointer select-none"
-                              >
-                                +
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Flavor Specific Price override */}
-                          <div className="flex flex-col gap-1 w-full md:w-[95px]">
-                            <span className="text-[9px] uppercase tracking-wider text-[#555] font-mono font-bold">Item Price ($)</span>
-                            <div className="relative">
-                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-mono text-[#444] font-bold">$</span>
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={entry.price}
-                                onChange={(e) => handleUpdateFlavorEntry(entry.id, { price: parseFloat(e.target.value) || 0 })}
-                                className="w-full bg-[#0B0C0E] border border-[#222] rounded-xl p-2 pl-6 text-sm text-right text-[#22C55E] font-serif font-bold focus:outline-none focus:border-[#D4AF37]"
-                              />
-                            </div>
-                          </div>
-
-                          {/* Specific Barcode trigger line */}
-                          <div className="flex flex-col gap-1 col-span-2 lg:col-span-1 w-full md:w-[160px]">
-                            <span className="text-[9px] uppercase tracking-wider text-[#555] font-mono font-bold">UPC Barcode</span>
-                            <div className="flex gap-1.5">
-                              <input
-                                type="text"
-                                placeholder="Scan/Type UPC"
-                                value={entry.barcode}
-                                onChange={(e) => handleUpdateFlavorEntry(entry.id, { barcode: e.target.value })}
-                                className="flex-1 bg-[#0B0C0E] border border-[#222] rounded-xl p-2 text-xs font-mono text-[#E5E1DA] placeholder:text-[#333] focus:outline-none focus:border-[#D4AF37] min-w-0"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => setActiveScanningFlavId(entry.id)}
-                                className="p-2 bg-[#1A1C22] border border-[#333] text-[#D4AF37] hover:border-[#D4AF37] hover:bg-[#20222A] transition-colors rounded-xl flex items-center justify-center shrink-0 cursor-pointer active:scale-95"
-                                title="Scan UPC"
-                              >
-                                <ScanBarcode className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-
-                        </div>
-
-                        {/* Separate removal button spaced perfectly */}
-                        <div className="absolute top-3.5 right-3.5 md:static md:flex md:items-center">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveFlavorEntry(entry.id)}
-                            className="p-1.5 text-[#555] hover:text-red-400 hover:bg-[#1E2026] rounded-lg transition-all cursor-pointer active:scale-90"
-                            title="Remove Single Row"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </motion.div>
-                    ))
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-12 text-center border-2 border-dashed border-[#1F1F1F] rounded-2xl bg-[#090A0D]/20 px-4">
-                      <div className="p-3 bg-[#111] border border-[#222] rounded-full mb-3 text-[#555]">
-                        <AlertCircle className="w-6 h-6 text-[#D4AF37]" />
-                      </div>
-                      <h4 className="text-sm font-serif text-[#AAA] mb-1 font-bold">Catalog Queue is Empty</h4>
-                      <p className="text-[#555] text-xs max-w-sm font-sans">
-                        Tap rapid preset chips labeled <span className="text-[#D4AF37] font-semibold">"All Presets"</span>, specific flavor chips above, or enter manually to queue items for the brand.
-                      </p>
-                    </div>
-                  )}
-                </AnimatePresence>
-              </div>
             </div>
 
+            {/* Column 2: Price, Photo and Qty counter values */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* Quant with buttons adjustment */}
+              <div className="space-y-1.5">
+                <span className="block text-[9px] uppercase tracking-wider text-[#555] font-bold">2. Quantity</span>
+                <div className="flex bg-[#0D0F13] border border-[#222] rounded-xl items-center justify-between p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => adjustActiveQty(-5)}
+                    className="w-8 h-8 rounded-lg bg-[#14161B] hover:bg-[#1E2026] text-xs font-bold text-gray-400 active:scale-90 transition-all cursor-pointer select-none"
+                  >
+                    -5
+                  </button>
+                  <input
+                    type="number"
+                    min="0"
+                    value={activeFlavorQty}
+                    onChange={(e) => setActiveFlavorQty(parseInt(e.target.value, 10) || 0)}
+                    className="w-8 bg-transparent text-center text-sm font-bold font-mono text-[#D4AF37] focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => adjustActiveQty(5)}
+                    className="w-8 h-8 rounded-lg bg-[#14161B] hover:bg-[#1E2026] text-xs font-bold text-gray-400 active:scale-90 transition-all cursor-pointer select-none"
+                  >
+                    +5
+                  </button>
+                </div>
+              </div>
+
+              {/* Pricing with micro adjustments */}
+              <div className="space-y-1.5">
+                <span className="block text-[9px] uppercase tracking-wider text-[#555] font-bold">3. Price ($)</span>
+                <div className="flex bg-[#0D0F13] border border-[#222] rounded-xl items-center justify-between p-0.5 relative">
+                  <button
+                    type="button"
+                    onClick={() => adjustActivePrice(-0.10)}
+                    className="px-2 h-8 rounded-lg bg-[#14161B] text-[10px] font-mono text-gray-400 active:scale-90 cursor-pointer"
+                  >
+                    -.10
+                  </button>
+                  <input
+                    type="text"
+                    value={activeFlavorPrice}
+                    onChange={(e) => setActiveFlavorPrice(e.target.value)}
+                    className="w-10 bg-transparent text-center text-sm font-serif font-bold text-emerald-500 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => adjustActivePrice(0.10)}
+                    className="px-2 h-8 rounded-lg bg-[#14161B] text-[10px] font-mono text-gray-400 active:scale-90 cursor-pointer"
+                  >
+                    +.10
+                  </button>
+                </div>
+              </div>
+
+              {/* UPC capturing state & scan triggers */}
+              <div className="col-span-1 space-y-1.5">
+                <span className="block text-[9px] uppercase tracking-wider text-[#555] font-bold">4. UPC/Barcode</span>
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    placeholder="None"
+                    value={activeFlavorBarcode}
+                    onChange={(e) => setActiveFlavorBarcode(e.target.value)}
+                    className="flex-1 bg-[#0D0F13] border border-[#222] text-xs font-mono p-2 rounded-xl text-[#E5E1DA]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setIsScanningActive(true)}
+                    className="p-2 bg-[#1A1C22] border border-[#333] hover:border-[#D4AF37] text-[#D4AF37] rounded-xl cursor-pointer active:scale-95 transition-all flex items-center justify-center shrink-0"
+                  >
+                    <ScanBarcode className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Pic Upload Trigger specifically designed as Buttons for phone */}
+              <div className="col-span-1 space-y-1.5">
+                <span className="block text-[9px] uppercase tracking-wider text-[#555] font-bold">5. Upload Picture</span>
+                {activeFlavorImage ? (
+                  <div className="flex items-center gap-2 border border-emerald-500/30 bg-emerald-500/5 p-1 rounded-xl relative justify-between">
+                    <img src={activeFlavorImage} className="w-8 h-8 rounded-lg object-cover" />
+                    <span className="text-[8px] font-mono font-bold uppercase tracking-wider text-emerald-500">Captured</span>
+                    <button
+                      type="button"
+                      onClick={() => setActiveFlavorImage(undefined)}
+                      className="p-1 text-red-400 bg-[#0F1014] hover:bg-red-500/20 rounded-lg active:scale-90 transition-all font-bold"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative border border-dashed border-[#222] bg-[#0A0B0D] hover:border-[#D4AF37]/50 transition-colors h-[32px] rounded-xl flex items-center justify-center overflow-hidden cursor-pointer group">
+                    <div className="flex items-center gap-1.5 text-[10px] text-[#666] font-bold group-hover:text-[#D4AF37]">
+                      <ImageIcon className="w-3.5 h-3.5" />
+                      <span>Take Photo</span>
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleActiveImageUpload}
+                      className="absolute inset-0 opacity-0 cursor-pointer"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Action buttons footer */}
-          <div className="p-5 sm:p-6 border-t border-[#1C1D22] bg-[#0E1015] flex gap-3.5 flex-shrink-0 z-10">
-            <button
-              type="button"
+          {/* Button style queue trigger */}
+          <button
+            type="button"
+            onClick={handleAddFlavorToQueue}
+            className="w-full py-3 bg-[#1D2128] hover:bg-[#D4AF37]/10 hover:text-[#D4AF37] border border-[#2B303A] text-[#888] rounded-xl flex items-center justify-center gap-2 text-xs uppercase tracking-widest font-black transition-all active:scale-95 cursor-pointer"
+          >
+            <Plus className="w-4 h-4 shrink-0" />
+            Queue Added Flavor Line
+          </button>
+        </div>
+
+        {/* Current list representing queued items catalog */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="border-b border-[#222] pb-2 mb-3 flex justify-between items-center bg-[#090A0D]/50 z-10 flex-shrink-0">
+            <h5 className="text-[10px] uppercase font-mono tracking-widest text-[#555] font-bold">
+              Current Queue ({queuedFlavors.length})
+            </h5>
+            {queuedFlavors.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setQueuedFlavors([])}
+                className="text-[9px] uppercase font-mono font-bold text-red-400 hover:underline px-2"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+
+          <div className="flex-1 overflow-y-auto space-y-2 pr-1.5 pb-6">
+            <AnimatePresence initial={false}>
+              {queuedFlavors.length > 0 ? (
+                queuedFlavors.map((q, index) => (
+                  <motion.div
+                    key={q.id}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 10 }}
+                    className="p-3 bg-[#111317] border border-[#222] rounded-xl flex gap-3 items-center justify-between"
+                  >
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="w-11 h-11 bg-[#0A0B0E] border border-[#222] rounded-lg shrink-0 flex items-center justify-center overflow-hidden">
+                        {q.image ? (
+                          <img src={q.image} className="w-full h-full object-cover" />
+                        ) : (
+                          <Package className="w-5 h-5 text-[#333]" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-serif text-[#E2DFD2] truncate font-bold leading-none mb-1">
+                          {q.flavor}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[9px] text-[#555] font-mono">
+                            UPC: {q.barcode || 'Empty'}
+                          </span>
+                          <span className="text-[9px] text-emerald-500 font-serif font-bold">
+                            ${q.price.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      {/* Qty count overrides */}
+                      <div className="flex bg-[#0A0C0F] border border-[#222] rounded-lg items-center gap-2 px-2 py-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setQueuedFlavors(prev => prev.map(item => item.id === q.id ? { ...item, quantity: Math.max(0, item.quantity - 1) } : item));
+                          }}
+                          className="text-xs font-bold text-gray-500 px-1 hover:text-white"
+                        >
+                          -
+                        </button>
+                        <span className="text-xs font-mono text-[#D4AF37] font-bold w-6 text-center">
+                          {q.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setQueuedFlavors(prev => prev.map(item => item.id === q.id ? { ...item, quantity: item.quantity + 1 } : item));
+                          }}
+                          className="text-xs font-bold text-gray-500 px-1 hover:text-white"
+                        >
+                          +
+                        </button>
+                      </div>
+
+                      {/* Line deleter */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQueuedFlavors(prev => prev.filter(item => item.id !== q.id));
+                          toast.success('Removed flavor line');
+                        }}
+                        className="p-1.5 text-[#555] hover:text-red-400 bg-transparent hover:bg-red-500/5 rounded-lg active:scale-90 transition-all font-bold cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </motion.div>
+                ))
+              ) : (
+                <div className="py-8 text-center border border-dashed border-[#1B1D22] bg-[#111216]/10 rounded-xl">
+                  <p className="text-xs text-[#555] tracking-wide font-serif italic">Use the form above to add custom flavors of {brand}.</p>
+                </div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 z-50 bg-[#0A0B0E]/95 flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-md overflow-hidden">
+        <motion.div 
+          initial={{ opacity: 0, y: 120 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 120 }}
+          transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+          className="bg-[#0D0F13] border-t sm:border border-[#222] w-full max-w-4xl flex flex-col h-[95vh] sm:h-[88vh] max-h-[96vh] rounded-t-[2.5rem] sm:rounded-3xl overflow-hidden shadow-2xl"
+        >
+          {/* Main system header */}
+          <div className="flex justify-between items-center px-6 py-4.5 border-b border-[#222] bg-[#0E1015] z-10 flex-shrink-0">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[9px] uppercase font-mono tracking-[0.2em] bg-[#D4AF37]/10 text-[#D4AF37] px-2 py-0.5 rounded border border-[#D4AF37]/20 font-bold">SMOKE SYSTEM</span>
+                <span className="text-[9px] uppercase font-mono tracking-[0.2em] bg-[#00E5FF]/10 text-[#00E5FF] px-2 py-0.5 rounded border border-[#00E5FF]/20 font-bold">BULK BRAND DEPLOYER</span>
+              </div>
+              <h2 className="text-xl sm:text-2xl font-serif text-[#E5E1DA] leading-none font-bold">Deploy Brand Batch</h2>
+            </div>
+            <button 
+              type="button" 
               onClick={onClose}
-              className="flex-1 py-3.5 border border-[#222] rounded-xl text-[#888] bg-transparent hover:text-[#E5E1DA] hover:bg-[#15171D] active:bg-[#1A1C22] transition-all text-xs uppercase tracking-widest font-bold font-mono cursor-pointer"
+              className="p-2 hover:text-[#D4AF37] hover:bg-[#1E2026] text-[#888] rounded-full transition-all border border-transparent hover:border-[#222]"
             >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={flavorEntries.length === 0 || !brand.trim()}
-              onClick={handleCommitBulk}
-              className={`flex-[2] py-4 rounded-xl text-black border transition-all text-xs uppercase tracking-widest font-black shadow-lg cursor-pointer ${flavorEntries.length > 0 && brand.trim() ? 'bg-[#D4AF37] border-[#D4AF37] hover:bg-[#E5C25A] active:bg-[#B3932E] shadow-[#D4AF37]/10' : 'bg-[#14161C]/50 border-[#222] text-[#444] cursor-not-allowed shadow-none'}`}
-            >
-              Deploy {flavorEntries.length} {brand.trim() || 'Product'} Records
+              <X className="w-5 h-5 sm:w-6 sm:h-6" />
             </button>
           </div>
 
+          {/* Stepper Breadcrumb header */}
+          <div className="bg-[#111317] px-6 py-2 border-b border-[#222]/80 flex-shrink-0 flex items-center justify-between text-[10px] uppercase font-mono font-bold text-[#555] tracking-widest">
+            <div className="flex items-center gap-2">
+              <span className={`px-2 py-0.5 rounded ${step === 'brand' ? 'bg-[#D4AF37] text-black' : 'bg-[#1E2026] text-gray-400'}`}>1</span>
+              <span className={step === 'brand' ? 'text-gray-300' : 'text-gray-500'}>Brand Blueprint</span>
+            </div>
+            <div className="w-12 h-px bg-[#222]"></div>
+            <div className="flex items-center gap-2">
+              <span className={`px-2 py-0.5 rounded ${step === 'flavors' ? 'bg-[#D4AF37] text-black' : 'bg-[#1E2026] text-gray-400'}`}>2</span>
+              <span className={step === 'flavors' ? 'text-gray-300' : 'text-gray-500'}>Flavor Deployment</span>
+            </div>
+          </div>
+
+          {/* Core Content Body */}
+          <div className="flex-1 overflow-y-auto px-6 py-4 bg-[#090A0D]/50">
+            {step === 'brand' ? renderBrandStep() : renderFlavorsStep()}
+          </div>
+
+          {/* Shared persistent dialog footer logic */}
+          <div className="p-5 border-t border-[#1F2026] bg-[#0E1015] flex gap-3.5 flex-shrink-0 z-10">
+            {step === 'flavors' && (
+              <button
+                type="button"
+                onClick={() => setStep('brand')}
+                className="flex-1 py-3.5 border border-[#222] rounded-xl text-[#888] bg-transparent hover:text-white hover:bg-[#15171C] active:bg-[#1C1F26] transition-all text-xs uppercase tracking-widest font-bold font-mono cursor-pointer"
+              >
+                ◀ Back
+              </button>
+            )}
+            
+            <button
+              type="button"
+              onClick={step === 'brand' ? onClose : handleDatabaseSubmit}
+              className={`py-3.5 border rounded-xl text-xs uppercase tracking-widest font-black transition-all cursor-pointer ${step === 'brand' ? 'flex-1 bg-transparent border-[#222] text-[#888] hover:text-[#E2DFD2] hover:bg-[#15171C]' : 'flex-[2] bg-[#D4AF37] border-[#D4AF37] hover:bg-[#E5C25A] active:bg-[#B3932E] text-black shadow-lg shadow-[#D4AF37]/10'}`}
+              disabled={step === 'flavors' && queuedFlavors.length === 0}
+            >
+              {step === 'brand' 
+                ? 'Cancel Deployment' 
+                : `Submit Deploy (${queuedFlavors.length} Flavors)`
+              }
+            </button>
+          </div>
         </motion.div>
       </div>
 
-      {/* Barcode scanner overlay context */}
+      {/* Shared Barcode Scanner framework */}
       <AnimatePresence>
-        {activeScanningFlavId && (
+        {isScanningActive && (
           <BarcodeScanner 
             onResult={handleScanResult} 
-            onClose={() => setActiveScanningFlavId(null)} 
+            onClose={() => setIsScanningActive(false)} 
           />
         )}
       </AnimatePresence>
