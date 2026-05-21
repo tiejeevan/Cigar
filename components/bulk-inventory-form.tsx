@@ -3,9 +3,10 @@
 import { useState, useCallback, useMemo } from 'react';
 import { db, InventoryItem } from '@/lib/db';
 import { DEFAULT_BRANDS, PRODUCT_CATEGORIES } from '@/lib/constants';
-import { UploadCloud, X, Plus, Trash2, ScanBarcode, Check, Layers, Coins, AlertCircle } from 'lucide-react';
+import { UploadCloud, X, Plus, Trash2, ScanBarcode, Check, Layers, Coins, AlertCircle, ChevronDown, Trash, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { BarcodeScanner } from './barcode-scanner';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface BulkInventoryFormProps {
   onClose: () => void;
@@ -25,11 +26,11 @@ const CATEGORY_FLAVOR_PRESETS: Record<string, string[]> = {
   'Cigarillos': [
     'Sweet', 'Diamond', 'Original', 'Honey', 'Russian Cream', 'Green Leaf', 
     'Silver', 'Grape', 'Strawberry', 'Mango', 'Peach', 'Vanilla', 'Chocolate', 
-    'Blue', 'Wine', 'Irish Cream', 'Black', 'Honey Bourbon'
+    'Blue', 'Wine', 'Irish Cream', 'Black', 'Honey Bourbon', 'White Grape', 'Tropical'
   ],
   'Disposable Vapes': [
     'Cool Mint', 'Watermelon Ice', 'Blue Razz Ice', 'Strawberry Banana', 
-    'Peach Ice', 'Grape Ice', 'Strawberry Kiwi', 'Mango Blast', 'Tobacco', 'Clear'
+    'Peach Ice', 'Grape Ice', 'Strawberry Kiwi', 'Mango Blast', 'Rich Tobacco', 'Sour Apple', 'Triple Berry'
   ],
   'Vape Juice': [
     'Blue Razz', 'Strawberry Fruit', 'Watermelon Twist', 'Minty Fresh', 
@@ -55,7 +56,7 @@ export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
   const [defaultReorder, setDefaultReorder] = useState('10');
   const [sharedImage, setSharedImage] = useState<string | undefined>(undefined);
 
-  // New Flavor name current text input
+  // Custom Flavor name current text input
   const [customFlavorInput, setCustomFlavorInput] = useState('');
 
   // Active bulk flavors
@@ -124,6 +125,43 @@ export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
     }
   };
 
+  // Select all dynamic presets
+  const handleSelectAllPresets = () => {
+    const defaultPrVal = parseFloat(defaultPrice) || 1.29;
+    const defaultReVal = parseInt(defaultReorder, 10) || 10;
+    
+    const entriesToAdd: BulkFlavorEntry[] = [];
+    
+    dynamicPresets.forEach(preset => {
+      const exists = flavorEntries.some(f => f.flavor.toLowerCase() === preset.toLowerCase());
+      if (!exists) {
+        entriesToAdd.push({
+          id: Math.random().toString(36).substring(2, 9),
+          flavor: preset,
+          quantity: 0,
+          price: defaultPrVal,
+          reorderThreshold: defaultReVal,
+          barcode: ''
+        });
+      }
+    });
+
+    if (entriesToAdd.length === 0) {
+      toast.info('All preset flavors are already in your queue.');
+      return;
+    }
+
+    setFlavorEntries(prev => [...prev, ...entriesToAdd]);
+    toast.success(`Added ${entriesToAdd.length} dynamic preset flavors to catalog.`);
+  };
+
+  // Clear current active queue
+  const handleClearQueue = () => {
+    if (flavorEntries.length === 0) return;
+    setFlavorEntries([]);
+    toast.success('Cleared bulk queue.');
+  };
+
   // Add a fully custom flavor line from input
   const handleAddCustomFlavor = () => {
     const trimmed = customFlavorInput.trim();
@@ -167,7 +205,7 @@ export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
       price: pr,
       reorderThreshold: re
     })));
-    toast.success('Defaults applied to all queued flavors!');
+    toast.success('Successfully synchronized default prices and reorder levels and thresholds!');
   };
 
   // Barcode scanning result mapping standard
@@ -189,13 +227,13 @@ export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
     }
 
     if (flavorEntries.length === 0) {
-      toast.error('Please add at least one Flavor to commit.');
+      toast.error('Please add at least one Flavor to import.');
       return;
     }
 
     try {
       let successCount = 0;
-      toast.loading('Writing database records...', { id: 'bulk-commit' });
+      toast.loading('Writing database records to Neon Postgres...', { id: 'bulk-commit' });
 
       for (const entry of flavorEntries) {
         const item: InventoryItem = {
@@ -215,7 +253,7 @@ export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
         successCount++;
       }
 
-      toast.success(`Successfully archived ${successCount} flavor records!`, { id: 'bulk-commit' });
+      toast.success(`Successfully added ${successCount} flavor records in bulk!`, { id: 'bulk-commit' });
       onClose();
     } catch (error) {
       console.error(error);
@@ -225,77 +263,93 @@ export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-[#0A0B0E]/95 flex items-end sm:items-center justify-center sm:p-4 backdrop-blur-md overflow-hidden">
-        <div className="bg-[#0D0F13] sm:border border-[#2A2A2A] w-full max-w-4xl flex flex-col h-full sm:h-[90vh] sm:max-h-[90vh] rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl">
+      <div className="fixed inset-0 z-50 bg-[#0A0B0E]/90 flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-md overflow-hidden">
+        <motion.div 
+          initial={{ opacity: 0, y: 100 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 100 }}
+          transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+          className="bg-[#0D0F13] border-t sm:border border-[#2D2D2D] w-full max-w-5xl flex flex-col h-[93vh] sm:h-[88vh] max-h-[95vh] rounded-t-[2.5rem] sm:rounded-3xl overflow-hidden shadow-2xl"
+        >
           
           {/* Main header block */}
-          <div className="flex justify-between items-center p-6 border-b border-[#2A2A2A] bg-[#0D0F13] z-10 flex-shrink-0">
+          <div className="flex justify-between items-center px-6 py-5 border-b border-[#222] bg-[#0E1015] z-10 flex-shrink-0">
             <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-[10px] uppercase font-mono tracking-[0.2em] bg-[#D4AF37]/10 text-[#D4AF37] px-2 py-0.5 rounded border border-[#D4AF37]/20 font-bold">Fast-Add Engine</span>
-                <span className="text-[10px] uppercase font-mono tracking-[0.2em] bg-[#14161C] text-[#888] px-2 py-0.5 rounded border border-[#2A2A2A]">Bulk Brand Wizard</span>
+              <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                <span className="text-[9px] uppercase font-mono tracking-[0.2em] bg-[#D4AF37]/10 text-[#D4AF37] px-2 py-0.5 rounded border border-[#D4AF37]/20 font-bold">SMOKE OS</span>
+                <span className="text-[9px] uppercase font-mono tracking-[0.2em] bg-[#00E5FF]/10 text-[#00E5FF] px-2 py-0.5 rounded border border-[#00E5FF]/20 font-bold">FAST BULK REGISTER</span>
               </div>
-              <h2 className="text-2xl font-serif text-[#E5E1DA] leading-none">Bulk Flavor Provisioning</h2>
+              <h2 className="text-xl sm:text-2xl font-serif text-[#E5E1DA] leading-none tracking-tight">Bulk Brand Deployer</h2>
             </div>
-            <button onClick={onClose} className="p-3 hover:text-[#D4AF37] hover:bg-[#1F2127] rounded-full transition-all text-[#888] active:scale-95">
-              <X className="w-6 h-6" />
+            <button 
+              type="button" 
+              onClick={onClose} 
+              className="p-2 sm:p-2.5 hover:text-[#D4AF37] hover:bg-[#1E2026] text-[#888] rounded-full transition-all active:scale-95 border border-transparent hover:border-[#333]"
+            >
+              <X className="w-5 h-5 sm:w-6 sm:h-6" />
             </button>
           </div>
           
-          {/* Scrollable contents split into 2 visual side maps on desktop */}
-          <div className="overflow-y-auto flex-1 bg-[#0A0B0E]/50 flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-[#2A2A2A]">
+          {/* Scrollable contents split into 2 visual columns */}
+          <div className="overflow-y-auto flex-1 bg-[#090A0D] flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-[#1F1F1F]">
             
-            {/* Left Box: Shared Specifications */}
-            <div className="w-full lg:w-[380px] p-6 space-y-6 flex-shrink-0">
-              <h3 className="text-xs uppercase tracking-[0.2em] font-bold text-[#888] border-b border-[#2A2A2A] pb-3 flex items-center gap-2">
-                <Layers className="w-4 h-4 text-[#D4AF37]" />
-                1. Brand Blueprint
-              </h3>
+            {/* Left Box: Shared Blueprint Specs */}
+            <div className="w-full lg:w-[360px] p-6 space-y-6 flex-shrink-0 bg-[#0C0E12]">
+              <div className="flex items-center justify-between border-b border-[#222] pb-3">
+                <h3 className="text-xs uppercase tracking-[0.2em] font-bold text-[#888] flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-[#D4AF37]" />
+                  1. Brand Identity
+                </h3>
+                <span className="text-[10px] uppercase font-mono text-[#444] font-semibold">Step 1 of 2</span>
+              </div>
 
               <div className="space-y-4">
-                {/* Category Selection */}
-                <div className="space-y-2">
-                  <label className="block text-xs uppercase tracking-[0.2em] text-[#666] font-semibold">Category</label>
-                  <select
-                    value={category}
-                    onChange={(e) => {
-                      setCategory(e.target.value);
-                      setFlavorEntries([]); // Reset entries on category change to optimize preset logic
-                    }}
-                    className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl appearance-none cursor-pointer"
-                  >
-                    {PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-
-                {/* Brand Selection */}
-                <div className="space-y-2">
-                  <label className="block text-xs uppercase tracking-[0.2em] text-[#666] font-semibold">Brand / Vendor</label>
+                {/* Brand Selection with Datatable Support */}
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#666] font-bold">Brand or Manufacturer</label>
                   <input
-                    list="bulk-brand-options"
+                    list="bulk-brand-options-modern"
                     type="text"
                     required
                     maxLength={100}
-                    placeholder="e.g. Dutch Masters"
+                    placeholder="e.g. Swisher Sweets, Dutch Masters"
                     value={brand}
                     onChange={(e) => setBrand(e.target.value)}
-                    className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl font-medium"
+                    className="w-full bg-[#14161C] border border-[#222] text-[#E5E1DA] px-4 py-3 text-base md:text-sm focus:outline-none focus:border-[#D4AF37] transition-all rounded-xl font-medium focus:ring-1 focus:ring-[#D4AF37]/50"
                   />
-                  <datalist id="bulk-brand-options">
+                  <datalist id="bulk-brand-options-modern">
                     {DEFAULT_BRANDS.map(b => <option key={b} value={b} />)}
                   </datalist>
                 </div>
 
-                {/* Pack Packaging Format */}
-                <div className="space-y-2">
-                  <label className="block text-xs uppercase tracking-[0.2em] text-[#666] font-semibold">Format</label>
-                  <div className="flex bg-[#14161C] border border-[#2A2A2A] w-full p-1 gap-1 rounded-xl">
+                {/* Category Selector */}
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#666] font-bold">General Category</label>
+                  <div className="relative">
+                    <select
+                      value={category}
+                      onChange={(e) => {
+                        setCategory(e.target.value);
+                        setFlavorEntries([]); // Reset standard queries
+                      }}
+                      className="w-full bg-[#14161C] border border-[#222] text-[#E5E1DA] px-4 py-3 text-base md:text-sm focus:outline-none focus:border-[#D4AF37] transition-all rounded-xl appearance-none cursor-pointer pr-10 font-medium"
+                    >
+                      {PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <ChevronDown className="w-4 h-4 text-[#666] absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* Format / Packaging Selection */}
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#666] font-bold">Packaging / Sell Type</label>
+                  <div className="grid grid-cols-3 bg-[#111318] border border-[#222] p-1 gap-1 rounded-xl">
                     {['Single', 'Box', 'Carton'].map(pt => (
                       <button
                         key={pt}
                         type="button"
                         onClick={() => setPackType(pt)}
-                        className={`flex-1 py-1.5 text-[10px] tracking-widest uppercase transition-all rounded-lg ${packType === pt ? 'bg-[#2A2A2A] text-[#D4AF37] font-bold' : 'text-[#666] hover:text-[#E5E1DA]'}`}
+                        className={`py-2 text-[10px] tracking-widest uppercase transition-all rounded-lg font-bold ${packType === pt ? 'bg-[#1E2128] border border-[#333] text-[#D4AF37]' : 'text-[#666] hover:text-[#AAA]'}`}
                       >
                         {pt}
                       </button>
@@ -303,60 +357,69 @@ export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
                   </div>
                 </div>
 
-                {/* Shared pricing and threshold triggers */}
-                <div className="grid grid-cols-2 gap-3 bg-[#111317] border border-[#2A2A2A] p-3 rounded-xl shadow-inner">
-                  <div className="space-y-1.5 text-center">
-                    <label className="block text-[9px] uppercase tracking-[0.1em] text-[#666] font-semibold">Default Price ($)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={defaultPrice}
-                      onChange={(e) => setDefaultPrice(e.target.value)}
-                      className="w-full bg-[#14161C] border border-[#2A2A2A] rounded-lg text-center text-[#22C55E] p-2 text-base font-serif font-bold focus:outline-none"
-                    />
+                {/* Shared Defaults Section */}
+                <div className="bg-[#111216]/50 border border-[#222] p-4 rounded-xl space-y-3.5 shadow-inner">
+                  <span className="block text-[9px] uppercase tracking-[0.15em] text-[#666] font-bold text-center border-b border-[#222] pb-1.5">
+                    Shared Row Defaults
+                  </span>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1 text-center">
+                      <label className="block text-[9px] uppercase tracking-[0.1em] text-[#666]">Retail Price</label>
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-mono text-[#D4AF37]">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={defaultPrice}
+                          onChange={(e) => setDefaultPrice(e.target.value)}
+                          className="w-full bg-[#14161C] border border-[#222] rounded-lg text-right text-[#22C55E] p-2 text-base md:text-sm font-serif font-bold focus:outline-none focus:border-[#D4AF37]"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1 text-center">
+                      <label className="block text-[9px] uppercase tracking-[0.1em] text-[#666]">Alert At Qty</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={defaultReorder}
+                        onChange={(e) => setDefaultReorder(e.target.value)}
+                        className="w-full bg-[#14161C] border border-[#222] rounded-lg text-center text-[#E5E1DA] p-2 text-base md:text-sm font-mono focus:outline-none focus:border-[#D4AF37]"
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-1.5 text-center">
-                    <label className="block text-[9px] uppercase tracking-[0.1em] text-[#666] font-semibold">Default Reorder</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={defaultReorder}
-                      onChange={(e) => setDefaultReorder(e.target.value)}
-                      className="w-full bg-[#14161C] border border-[#2A2A2A] rounded-lg text-center text-[#E5E1DA] p-2 text-base font-serif focus:outline-none"
-                    />
-                  </div>
+
+                  {flavorEntries.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleApplyDefaultsToAll}
+                      className="w-full py-2 bg-[#1B1D23] hover:bg-[#252831] hover:text-[#D4AF37] border border-[#2A2D36]/60 text-[#888] rounded-lg text-[9px] font-mono uppercase tracking-widest transition-all duration-150 flex items-center justify-center gap-1 cursor-pointer active:scale-95"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      Sync Defaults to active list
+                    </button>
+                  )}
                 </div>
 
-                {/* Apply buttons for dynamic settings sync */}
-                {flavorEntries.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleApplyDefaultsToAll}
-                    className="w-full py-2 bg-[#1F2127] hover:bg-[#2A2A2A] border border-[#2A2A2A] text-[#888] hover:text-[#E5E1DA] rounded-lg text-[9px] font-mono uppercase tracking-widest transition-all"
-                  >
-                    Apply default price & threshold to all rows
-                  </button>
-                )}
-
-                {/* Shared Brand Image Visual Aspect */}
-                <div className="space-y-2 pt-2">
-                  <label className="block text-xs uppercase tracking-[0.2em] text-[#666] font-semibold">Shared Brand Photo</label>
+                {/* Shared Image / Logo Option */}
+                <div className="space-y-2 pt-1">
+                  <label className="block text-[10px] uppercase tracking-[0.2em] text-[#666] font-bold">Shared Photo (Fallback)</label>
                   {sharedImage ? (
                     <div className="relative inline-block w-full text-center">
-                      <img src={sharedImage} alt="Shared Brand Preview" className="h-28 w-28 object-cover border border-[#2A2A2A] bg-[#14161C] mx-auto shadow-md rounded-xl" />
+                      <img src={sharedImage} alt="Shared Logotype" className="h-24 w-24 object-cover border border-[#2A2A2A] bg-[#14161C] mx-auto shadow-md rounded-xl" />
                       <button
                         type="button"
                         onClick={removeSharedImage}
-                        className="absolute top-1/2 -translate-y-1/2 right-4 bg-[#0D0F13] border border-[#D4AF37]/50 text-[#D4AF37] p-1.5 hover:bg-[#D4AF37] hover:text-black transition-colors rounded-full shadow-md z-10"
+                        className="absolute top-1 right-2 bg-black/80 border border-red-500/30 text-red-400 p-1.5 hover:bg-red-500 hover:text-white transition-colors rounded-full shadow-lg z-10"
                       >
-                        <X className="w-4 h-4" />
+                        <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   ) : (
-                    <div className="border-2 border-dashed border-[#2D2D2D] rounded-xl p-5 flex flex-col items-center justify-center bg-[#14161C]/50 hover:bg-[#171920] hover:border-[#D4AF37]/30 transition-all cursor-pointer relative relative group overflow-hidden">
-                      <UploadCloud className="w-8 h-8 text-[#444] mb-1 group-hover:text-[#D4AF37]/50 transition-colors" />
-                      <span className="text-[9px] uppercase tracking-wider text-[#666]">Upload Shared Logo/Picture</span>
+                    <div className="border border-dashed border-[#333] rounded-xl p-4.5 flex flex-col items-center justify-center bg-[#14161C]/20 hover:bg-[#14161C]/50 hover:border-[#D4AF37]/50 transition-all cursor-pointer relative group overflow-hidden min-h-[100px]">
+                      <UploadCloud className="w-7 h-7 text-[#444] mb-1 group-hover:text-[#D4AF37] transition-colors duration-150" />
+                      <span className="text-[9px] uppercase tracking-wider text-[#666] font-bold font-mono">Upload Brand Picture</span>
                       <input
                         type="file"
                         accept="image/*"
@@ -371,21 +434,44 @@ export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
             </div>
 
             {/* Right Box: Dynamic Flavors Builder */}
-            <div className="flex-1 p-6 flex flex-col overflow-hidden min-h-[400px]">
-              <h3 className="text-xs uppercase tracking-[0.2em] font-bold text-[#888] border-b border-[#2A2A2A] pb-3 flex items-center justify-between flex-shrink-0">
-                <span className="flex items-center gap-2">
+            <div className="flex-1 p-5 sm:p-6 flex flex-col overflow-hidden min-h-[350px]">
+              <div className="flex items-center justify-between border-b border-[#222] pb-3 flex-shrink-0">
+                <h3 className="text-xs uppercase tracking-[0.2em] font-bold text-[#888] flex items-center gap-2">
                   <Coins className="w-4 h-4 text-[#D4AF37]" />
-                  2. Flavor Deployment Register
-                </span>
+                  2. Deploy Flavor Catalog
+                </h3>
                 <span className="text-[10px] font-mono text-[#D4AF37] bg-[#D4AF37]/10 px-2.5 py-0.5 rounded-full border border-[#D4AF37]/20 font-bold">
-                  {flavorEntries.length} Items Queued
+                  {flavorEntries.length} Items In Export
                 </span>
-              </h3>
+              </div>
 
-              {/* Presets Grid Section */}
-              <div className="py-4 space-y-2 border-b border-[#2A2A2A]/50 flex-shrink-0 bg-[#0E1014]/30 rounded-xl px-3 my-4">
-                <p className="text-[9px] uppercase tracking-widest text-[#666] font-bold">Select predefined {category} flavors to batch instantly:</p>
-                <div className="flex flex-wrap gap-1.5 max-h-[110px] overflow-y-auto pr-1">
+              {/* Presets Grid Selector block */}
+              <div className="py-3 px-3.5 my-4 bg-[#111216]/60 border border-[#222] rounded-2xl flex-shrink-0 space-y-2">
+                <div className="flex justify-between items-center bg-[#14161C]/50 p-1.5 rounded-lg border border-[#222]/30">
+                  <p className="text-[9px] uppercase tracking-widest text-[#666] font-bold font-mono">Select {category} Flavors:</p>
+                  
+                  {/* Preset quick action helpers for fast addition */}
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleSelectAllPresets}
+                      className="px-2.5 py-1 bg-[#D4AF37]/10 hover:bg-[#D4AF37] border border-[#D4AF37]/30 text-[#D4AF37] hover:text-black transition-all rounded text-[9px] uppercase font-mono font-bold active:scale-95 cursor-pointer"
+                    >
+                      All Presets
+                    </button>
+                    {flavorEntries.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearQueue}
+                        className="px-2.5 py-1 bg-red-500/10 hover:bg-red-600 border border-red-500/20 text-red-400 hover:text-white transition-all rounded text-[9px] uppercase font-mono font-bold active:scale-95 cursor-pointer"
+                      >
+                        Clear Queue
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5 max-h-[110px] sm:max-h-[130px] overflow-y-auto pr-1">
                   {dynamicPresets.map(preset => {
                     const isAdded = flavorEntries.some(f => f.flavor.toLowerCase() === preset.toLowerCase());
                     return (
@@ -393,9 +479,9 @@ export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
                         key={preset}
                         type="button"
                         onClick={() => handleTogglePreset(preset)}
-                        className={`px-3 py-1.5 text-xs rounded-lg border transition-all duration-150 flex items-center gap-1 cursor-pointer select-none active:scale-95 ${isAdded ? 'bg-[#D4AF37]/10 border-[#D4AF37] text-[#D4AF37] font-bold' : 'bg-[#14161C] border-[#2A2A2A] text-[#888] hover:text-[#E5E1DA] hover:border-[#444]'}`}
+                        className={`px-3 py-1.5 text-xs rounded-xl border transition-all duration-150 flex items-center gap-1 cursor-pointer select-none active:scale-95 text-base md:text-xs ${isAdded ? 'bg-[#D4AF37]/20 border-[#D4AF37] text-[#D4AF37] font-bold' : 'bg-[#14161C] border-[#222] text-[#888] hover:text-[#E2DFD2] hover:border-[#444]'}`}
                       >
-                        {isAdded && <Check className="w-3.5 h-3.5 stroke-[3px]" />}
+                        {isAdded && <Check className="w-3 h-3 stroke-[3px]" />}
                         {preset}
                       </button>
                     );
@@ -403,11 +489,11 @@ export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
                 </div>
               </div>
 
-              {/* Custom Add Line Input Form */}
-              <div className="flex gap-3 mb-6 flex-shrink-0">
+              {/* Custom flavored enter row */}
+              <div className="flex gap-2.5 mb-4 flex-shrink-0">
                 <input
                   type="text"
-                  placeholder="Custom flavored entry... e.g. White Grape (Hit enter to add)"
+                  placeholder="Type specialized custom flavor... (then hit Enter)"
                   value={customFlavorInput}
                   onChange={(e) => setCustomFlavorInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -416,137 +502,155 @@ export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
                       handleAddCustomFlavor();
                     }
                   }}
-                  className="flex-1 bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] px-4 py-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl placeholder:text-[#444]"
+                  className="flex-1 bg-[#14161C] border border-[#222] text-[#E5E1DA] px-4 py-3 text-base md:text-sm focus:outline-none focus:border-[#D4AF37] transition-all rounded-xl placeholder:text-[#444] focus:ring-1 focus:ring-[#D4AF37]/30"
                 />
                 <button
                   type="button"
                   onClick={handleAddCustomFlavor}
-                  className="bg-[#1F2127] border border-[#2A2A2A] text-[#D4AF37] hover:border-[#D4AF37] px-4 rounded-xl flex items-center justify-center transition-colors active:scale-95 shadow-sm"
+                  className="bg-[#1A1C22] border border-[#333] hover:border-[#D4AF37] hover:bg-[#20222A] text-[#D4AF37] px-4 rounded-xl flex items-center justify-center transition-all active:scale-95 shrink-0"
                 >
-                  <Plus className="w-5 h-5 mr-1" />
-                  <span className="text-xs uppercase tracking-widest font-bold">Add Line</span>
+                  <Plus className="w-5 h-5 shrink-0" />
+                  <span className="hidden sm:inline ml-1 text-xs uppercase tracking-widest font-bold">Add Item</span>
                 </button>
               </div>
 
-              {/* Scrollable grid representing current item configurations */}
-              <div className="flex-1 overflow-y-auto space-y-3 min-h-[150px] pr-1.5 pb-6">
-                {flavorEntries.length > 0 ? (
-                  flavorEntries.map((entry, index) => (
-                    <div 
-                      key={entry.id} 
-                      className="bg-[#14161C] border border-[#2A2A2A] hover:border-[#444] rounded-xl p-4 flex flex-col md:flex-row gap-4 items-stretch md:items-center relative shadow-sm"
-                    >
-                      {/* Row index indicator */}
-                      <div className="text-[10px] font-mono text-[#444] absolute top-2 left-2 md:static select-none">
-                        #{index + 1}
-                      </div>
-
-                      {/* Flavor name */}
-                      <div className="flex-1 min-w-[130px] space-y-1">
-                        <label className="md:hidden block text-[9px] uppercase tracking-widest text-[#555]">Flavor Name</label>
-                        <input
-                          type="text"
-                          required
-                          value={entry.flavor}
-                          onChange={(e) => handleUpdateFlavorEntry(entry.id, { flavor: e.target.value })}
-                          className="bg-transparent border-b border-[#2A2A2A] md:border-none text-sm text-[#E5E1DA] py-1 focus:outline-none focus:border-[#D4AF37] w-full font-serif text-lg leading-tight"
-                        />
-                      </div>
-
-                      {/* Quantity counter widget */}
-                      <div className="w-full md:w-[140px] flex flex-col gap-1">
-                        <label className="block text-[9px] uppercase tracking-widest text-[#555]">Qty In-Stock</label>
-                        <div className="flex bg-[#0D0F13] border border-[#2A2A2A] rounded-lg p-0.5 items-center justify-between">
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateFlavorEntry(entry.id, { quantity: Math.max(0, entry.quantity - 1) })}
-                            className="w-8 h-8 rounded text-[#888] hover:text-[#D4AF37] hover:bg-[#1E2026] flex items-center justify-center font-bold"
-                          >
-                            -
-                          </button>
-                          <input
-                            type="number"
-                            min="0"
-                            value={entry.quantity}
-                            onChange={(e) => handleUpdateFlavorEntry(entry.id, { quantity: parseInt(e.target.value, 10) || 0 })}
-                            className="w-12 bg-transparent text-center text-sm font-mono text-[#D4AF37] focus:outline-none"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateFlavorEntry(entry.id, { quantity: entry.quantity + 1 })}
-                            className="w-8 h-8 rounded text-[#888] hover:text-[#D4AF37] hover:bg-[#1E2026] flex items-center justify-center font-bold"
-                          >
-                            +
-                          </button>
+              {/* Scrollable list representing active flavors catalog */}
+              <div className="flex-1 overflow-y-auto space-y-2.5 min-h-[140px] pr-1.5 pb-4">
+                <AnimatePresence initial={false}>
+                  {flavorEntries.length > 0 ? (
+                    flavorEntries.map((entry, index) => (
+                      <motion.div 
+                        key={entry.id}
+                        initial={{ opacity: 0, height: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, height: 'auto', scale: 1 }}
+                        exit={{ opacity: 0, height: 0, scale: 0.95 }}
+                        transition={{ duration: 0.15 }}
+                        className="bg-[#13151A] border border-[#222]/80 hover:border-[#333] rounded-2xl p-4 flex flex-col md:flex-row gap-3 items-stretch md:items-center relative shadow-sm"
+                      >
+                        {/* Index identifier */}
+                        <div className="hidden md:block text-[10px] font-mono text-[#555] font-bold w-6 text-center select-none">
+                          {index + 1}
                         </div>
-                      </div>
 
-                      {/* Customized Price line value */}
-                      <div className="w-full md:w-[95px] flex flex-col gap-1">
-                        <label className="block text-[9px] uppercase tracking-widest text-[#555] md:text-center">Custom Price</label>
-                        <div className="relative">
-                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono text-[#666] font-bold">$</span>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={entry.price}
-                            onChange={(e) => handleUpdateFlavorEntry(entry.id, { price: parseFloat(e.target.value) || 0 })}
-                            className="w-full bg-[#0D0F13] border border-[#2A2A2A] rounded-lg p-1.5 pl-5 text-xs text-right text-[#22C55E] font-serif focus:outline-none"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Barcode scanner action for this specific flavor */}
-                      <div className="w-full md:w-[150px] flex flex-col gap-1">
-                        <label className="block text-[9px] uppercase tracking-widest text-[#555]">Flavor Barcode</label>
-                        <div className="flex gap-1.5">
+                        {/* Flavor Name input control */}
+                        <div className="flex-1 space-y-1">
+                          <span className="md:hidden text-[9px] uppercase tracking-wider text-[#555] font-mono font-bold">Flavor Name</span>
                           <input
                             type="text"
-                            placeholder="Optional UPC"
-                            value={entry.barcode}
-                            onChange={(e) => handleUpdateFlavorEntry(entry.id, { barcode: e.target.value })}
-                            className="flex-1 bg-[#0D0F13] border border-[#2A2A2A] rounded-lg p-1.5 text-[10px] font-mono text-[#E5E1DA] placeholder:text-[#333] focus:outline-none min-w-0"
+                            required
+                            value={entry.flavor}
+                            onChange={(e) => handleUpdateFlavorEntry(entry.id, { flavor: e.target.value })}
+                            className="bg-transparent border-b border-[#222] md:border-none text-base md:text-sm text-[#E5E1DA] focus:text-[#D4AF37] py-0.5 focus:outline-none focus:border-[#D4AF37] w-full font-serif font-bold tracking-wide"
                           />
+                        </div>
+
+                        {/* Flex containers wrapper for price, quant and barcode inside narrow screens */}
+                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:flex md:items-center gap-4">
+                          
+                          {/* Quantity Counter Stepper */}
+                          <div className="flex flex-col gap-1 w-full md:w-[130px]">
+                            <span className="text-[9px] uppercase tracking-wider text-[#555] font-mono font-bold">In-Stock Qty</span>
+                            <div className="flex bg-[#0B0C0E] border border-[#222] rounded-xl p-0.5 items-center justify-between">
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateFlavorEntry(entry.id, { quantity: Math.max(0, entry.quantity - 1) })}
+                                className="w-9 h-9 rounded-lg text-[#888] hover:text-[#D4AF37] hover:bg-[#1A1C22] flex items-center justify-center font-bold text-lg active:scale-90 transition-all cursor-pointer select-none"
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                min="0"
+                                value={entry.quantity}
+                                onChange={(e) => handleUpdateFlavorEntry(entry.id, { quantity: parseInt(e.target.value, 10) || 0 })}
+                                className="w-12 bg-transparent text-center text-sm font-mono text-[#D4AF37] focus:outline-none font-bold"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateFlavorEntry(entry.id, { quantity: entry.quantity + 1 })}
+                                className="w-9 h-9 rounded-lg text-[#888] hover:text-[#D4AF37] hover:bg-[#1A1C22] flex items-center justify-center font-bold text-lg active:scale-90 transition-all cursor-pointer select-none"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Flavor Specific Price override */}
+                          <div className="flex flex-col gap-1 w-full md:w-[95px]">
+                            <span className="text-[9px] uppercase tracking-wider text-[#555] font-mono font-bold">Item Price ($)</span>
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-mono text-[#444] font-bold">$</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={entry.price}
+                                onChange={(e) => handleUpdateFlavorEntry(entry.id, { price: parseFloat(e.target.value) || 0 })}
+                                className="w-full bg-[#0B0C0E] border border-[#222] rounded-xl p-2 pl-6 text-sm text-right text-[#22C55E] font-serif font-bold focus:outline-none focus:border-[#D4AF37]"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Specific Barcode trigger line */}
+                          <div className="flex flex-col gap-1 col-span-2 lg:col-span-1 w-full md:w-[160px]">
+                            <span className="text-[9px] uppercase tracking-wider text-[#555] font-mono font-bold">UPC Barcode</span>
+                            <div className="flex gap-1.5">
+                              <input
+                                type="text"
+                                placeholder="Scan/Type UPC"
+                                value={entry.barcode}
+                                onChange={(e) => handleUpdateFlavorEntry(entry.id, { barcode: e.target.value })}
+                                className="flex-1 bg-[#0B0C0E] border border-[#222] rounded-xl p-2 text-xs font-mono text-[#E5E1DA] placeholder:text-[#333] focus:outline-none focus:border-[#D4AF37] min-w-0"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setActiveScanningFlavId(entry.id)}
+                                className="p-2 bg-[#1A1C22] border border-[#333] text-[#D4AF37] hover:border-[#D4AF37] hover:bg-[#20222A] transition-colors rounded-xl flex items-center justify-center shrink-0 cursor-pointer active:scale-95"
+                                title="Scan UPC"
+                              >
+                                <ScanBarcode className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+
+                        </div>
+
+                        {/* Separate removal button spaced perfectly */}
+                        <div className="absolute top-3.5 right-3.5 md:static md:flex md:items-center">
                           <button
                             type="button"
-                            onClick={() => setActiveScanningFlavId(entry.id)}
-                            className="p-1.5 bg-[#1F2127] border border-[#2A2A2A] text-[#D4AF37] hover:border-[#D4AF37] hover:bg-[#2A2A2A] transition-colors rounded-lg flex items-center justify-center"
-                            title="Scan Specific Barcode"
+                            onClick={() => handleRemoveFlavorEntry(entry.id)}
+                            className="p-1.5 text-[#555] hover:text-red-400 hover:bg-[#1E2026] rounded-lg transition-all cursor-pointer active:scale-90"
+                            title="Remove Single Row"
                           >
-                            <ScanBarcode className="w-4 h-4" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
+                      </motion.div>
+                    ))
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-12 text-center border-2 border-dashed border-[#1F1F1F] rounded-2xl bg-[#090A0D]/20 px-4">
+                      <div className="p-3 bg-[#111] border border-[#222] rounded-full mb-3 text-[#555]">
+                        <AlertCircle className="w-6 h-6 text-[#D4AF37]" />
                       </div>
-
-                      {/* Clear line deletion option */}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveFlavorEntry(entry.id)}
-                        className="p-2 md:p-3 text-[#555] hover:text-[#C2410C] hover:bg-[#2A2A2A] rounded-lg transition-all absolute top-2 right-2 md:static self-center"
-                        title="Remove Flavor Line"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <h4 className="text-sm font-serif text-[#AAA] mb-1 font-bold">Catalog Queue is Empty</h4>
+                      <p className="text-[#555] text-xs max-w-sm font-sans">
+                        Tap rapid preset chips labeled <span className="text-[#D4AF37] font-semibold">"All Presets"</span>, specific flavor chips above, or enter manually to queue items for the brand.
+                      </p>
                     </div>
-                  ))
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-10 text-center border-2 border-dashed border-[#2A2A2A] rounded-2xl bg-[#0D0F13]/20">
-                    <AlertCircle className="w-8 h-8 text-[#555] mb-2" />
-                    <p className="text-[#888] text-xs font-serif italic max-w-xs">No flavor lines configured yet. Click preset chips above or type custom names to deploy immediate stock.</p>
-                  </div>
-                )}
+                  )}
+                </AnimatePresence>
               </div>
             </div>
 
           </div>
 
-          {/* Atomic Bulk Action control footer */}
-          <div className="p-5 sm:p-6 border-t border-[#2A2A2A] bg-[#0D0F13] flex gap-4 flex-shrink-0 z-10">
+          {/* Action buttons footer */}
+          <div className="p-5 sm:p-6 border-t border-[#1C1D22] bg-[#0E1015] flex gap-3.5 flex-shrink-0 z-10">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-4 border border-[#2A2A2A] rounded-xl text-[#888] bg-transparent hover:text-[#E5E1DA] hover:bg-[#1A1C23] active:bg-[#1F2127] transition-all text-xs uppercase tracking-widest font-semibold"
+              className="flex-1 py-3.5 border border-[#222] rounded-xl text-[#888] bg-transparent hover:text-[#E5E1DA] hover:bg-[#15171D] active:bg-[#1A1C22] transition-all text-xs uppercase tracking-widest font-bold font-mono cursor-pointer"
             >
               Cancel
             </button>
@@ -554,22 +658,24 @@ export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
               type="button"
               disabled={flavorEntries.length === 0 || !brand.trim()}
               onClick={handleCommitBulk}
-              className={`flex-[2] py-4 rounded-xl text-black border transition-all text-xs uppercase tracking-widest font-bold shadow-lg ${flavorEntries.length > 0 && brand.trim() ? 'bg-[#D4AF37] border-[#D4AF37] hover:bg-[#E5C25A] active:bg-[#B3932E] shadow-[#D4AF37]/10' : 'bg-[#14161C] border-[#2A2A2A] text-[#444] cursor-not-allowed shadow-none'}`}
+              className={`flex-[2] py-4 rounded-xl text-black border transition-all text-xs uppercase tracking-widest font-black shadow-lg cursor-pointer ${flavorEntries.length > 0 && brand.trim() ? 'bg-[#D4AF37] border-[#D4AF37] hover:bg-[#E5C25A] active:bg-[#B3932E] shadow-[#D4AF37]/10' : 'bg-[#14161C]/50 border-[#222] text-[#444] cursor-not-allowed shadow-none'}`}
             >
-              Import {flavorEntries.length} Flavor Records
+              Deploy {flavorEntries.length} {brand.trim() || 'Product'} Records
             </button>
           </div>
 
-        </div>
+        </motion.div>
       </div>
 
-      {/* Embedded Barcode scanner modal frame */}
-      {activeScanningFlavId && (
-        <BarcodeScanner 
-          onResult={handleScanResult} 
-          onClose={() => setActiveScanningFlavId(null)} 
-        />
-      )}
+      {/* Barcode scanner overlay context */}
+      <AnimatePresence>
+        {activeScanningFlavId && (
+          <BarcodeScanner 
+            onResult={handleScanResult} 
+            onClose={() => setActiveScanningFlavId(null)} 
+          />
+        )}
+      </AnimatePresence>
     </>
   );
 }
