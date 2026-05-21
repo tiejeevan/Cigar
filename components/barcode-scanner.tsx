@@ -36,11 +36,7 @@ export function BarcodeScanner({ onResult, onClose }: BarcodeScannerProps) {
       },
       (decodedText) => {
         if (isMounted) {
-          html5Qrcode.stop().then(() => {
-            onResult(decodedText);
-          }).catch(e => {
-            console.error("Failed to stop scanner", e);
-          });
+          onResult(decodedText);
         }
       },
       (error) => {
@@ -55,13 +51,18 @@ export function BarcodeScanner({ onResult, onClose }: BarcodeScannerProps) {
 
     return () => {
       isMounted = false;
-      if (html5Qrcode.isScanning) {
-        html5Qrcode.stop().then(() => {
+      const cleanup = async () => {
+        try {
+          if (html5Qrcode.isScanning) {
+            await html5Qrcode.stop();
+          }
           html5Qrcode.clear();
-        }).catch(error => {
-          console.error("Failed to clear html5Qrcode.", error);
-        });
-      }
+        } catch (error) {
+          // Ignore DOM exceptions during cleanup since React unmounts the wrapper
+        }
+      };
+      
+      cleanup();
     };
   }, [onResult]);
 

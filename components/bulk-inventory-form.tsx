@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 import { db, InventoryItem } from '@/lib/db';
-import { X, Plus, Trash2, Camera, PackageSearch } from 'lucide-react';
+import { X, Plus, Trash2, Camera, PackageSearch, ScanBarcode } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
+import { BarcodeScanner } from './barcode-scanner';
 
 interface BulkInventoryFormProps {
   onClose: () => void;
@@ -16,6 +17,7 @@ interface FlavorLine {
   price: string;
   quantity: number;
   image?: string;
+  barcode?: string;
 }
 
 export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
@@ -25,6 +27,7 @@ export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
 
   // Flavors Step
   const [flavors, setFlavors] = useState<FlavorLine[]>([]);
+  const [scanningFlavorId, setScanningFlavorId] = useState<string | null>(null);
 
   // Add an empty flavor line
   const handleAddFlavor = () => {
@@ -97,6 +100,7 @@ export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
           reorderThreshold: 10,
           price: parseFloat(flav.price) || 0,
           image: flav.image,
+          barcode: flav.barcode,
           updatedAt: Date.now()
         };
         await db.items.add(item);
@@ -202,7 +206,7 @@ export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
                     <Trash2 className="w-4 h-4" />
                   </button>
 
-                  <div className="pr-10">
+                  <div className="pr-10 mb-2">
                     <span className="text-xs text-gray-500 font-mono mb-1 block">Flavor #{index + 1} Name</span>
                     <input
                       type="text"
@@ -211,6 +215,28 @@ export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
                       onChange={(e) => handleUpdateFlavor(flavor.id, { name: e.target.value })}
                       className="w-full bg-transparent border-b border-[#333] text-white text-lg py-2 focus:outline-none focus:border-[#D4AF37] placeholder:text-[#444]"
                     />
+                  </div>
+
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="flex-1">
+                      <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold block mb-1">UPC / Barcode</span>
+                      <input
+                        type="text"
+                        placeholder="Scan or enter manually"
+                        value={flavor.barcode || ''}
+                        onChange={(e) => handleUpdateFlavor(flavor.id, { barcode: e.target.value })}
+                        className="w-full bg-[#1A1A1A] border border-[#222] text-white text-sm px-3 py-2.5 rounded-xl focus:outline-none focus:border-[#D4AF37]"
+                      />
+                    </div>
+                    <div className="pt-4">
+                      <button
+                        type="button"
+                        onClick={() => setScanningFlavorId(flavor.id)}
+                        className="p-2.5 bg-[#1A1A1A] border border-[#333] rounded-xl text-gray-400 hover:text-[#D4AF37] hover:border-[#D4AF37] active:scale-95 transition-all"
+                      >
+                        <ScanBarcode className="w-5 h-5" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
@@ -292,6 +318,19 @@ export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
           </div>
         </div>
       )}
+
+      {/* Barcode Scanner Overlay */}
+      <AnimatePresence>
+        {scanningFlavorId && (
+          <BarcodeScanner
+            onResult={(code) => {
+              handleUpdateFlavor(scanningFlavorId, { barcode: code });
+              setScanningFlavorId(null);
+            }}
+            onClose={() => setScanningFlavorId(null)}
+          />
+        )}
+      </AnimatePresence>
 
     </div>
   );

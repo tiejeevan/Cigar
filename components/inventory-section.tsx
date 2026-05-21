@@ -4,13 +4,15 @@ import { useState, useEffect } from 'react';
 import { db, InventoryItem, useLiveQuery } from '@/lib/db';
 import { InventoryForm } from '@/components/inventory-form';
 import { BulkInventoryForm } from '@/components/bulk-inventory-form';
+import { BrandsOverviewModal } from '@/components/brands-overview-modal';
 import { OverviewChart } from '@/components/overview-chart';
-import { Plus, Package, AlertTriangle, Archive, Search, Filter, Pencil, Trash2, ArrowUpDown, AlertCircle, Layers } from 'lucide-react';
+import { Plus, Package, AlertTriangle, Archive, Search, Filter, Pencil, Trash2, ArrowUpDown, AlertCircle, Layers, Tag } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function InventorySection({ pendingBarcode, clearPendingBarcode }: { pendingBarcode?: string | null, clearPendingBarcode?: () => void }) {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isBulkFormOpen, setIsBulkFormOpen] = useState(false);
+  const [isBrandsOverviewOpen, setIsBrandsOverviewOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | undefined>();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterBrand, setFilterBrand] = useState<string>('all');
@@ -68,24 +70,32 @@ export function InventorySection({ pendingBarcode, clearPendingBarcode }: { pend
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-4">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4 mb-4">
         <div>
           <h2 className="text-3xl font-serif text-[#E5E1DA]">Inventory Management</h2>
           <p className="text-[10px] uppercase tracking-widest text-[#888] mt-1">Manage stock and records</p>
         </div>
-        <div className="flex gap-3 w-full sm:w-auto">
+        <div className="grid grid-cols-2 lg:flex lg:w-auto gap-2 sm:gap-3 w-full">
+          <button 
+            type="button"
+            onClick={() => setIsBrandsOverviewOpen(true)}
+            className="flex items-center justify-center gap-2 bg-[#14161C] border border-[#2A2A2A] hover:border-[#D4AF37]/50 hover:bg-[#1A1C23] text-[#D4AF37] px-4 py-3 sm:py-4 transition-all rounded-xl font-bold uppercase tracking-widest text-[10px] sm:text-xs shadow-md active:scale-95 cursor-pointer"
+          >
+            <Tag className="w-4 h-4" />
+            Brands
+          </button>
           <button 
             type="button"
             onClick={() => setIsBulkFormOpen(true)}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-[#14161C] border border-[#2A2A2A] hover:border-[#D4AF37]/50 hover:bg-[#1A1C23] text-[#D4AF37] px-4 py-3 transition-all rounded-xl font-bold uppercase tracking-widest text-[10px] sm:text-xs shadow-md active:scale-95 cursor-pointer"
+            className="flex items-center justify-center gap-2 bg-[#14161C] border border-[#2A2A2A] hover:border-[#D4AF37]/50 hover:bg-[#1A1C23] text-[#D4AF37] px-4 py-3 sm:py-4 transition-all rounded-xl font-bold uppercase tracking-widest text-[10px] sm:text-xs shadow-md active:scale-95 cursor-pointer"
           >
             <Layers className="w-4 h-4" />
-            Bulk Add Brand
+            Bulk Add
           </button>
           <button 
             type="button"
             onClick={openNewForm}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-[#D4AF37] text-black px-5 py-3 hover:bg-[#E5C25A] active:bg-[#B3932E] transition-all rounded-xl font-bold uppercase tracking-widest text-[10px] sm:text-xs shadow-lg active:scale-95 cursor-pointer"
+            className="col-span-2 lg:col-span-1 flex items-center justify-center gap-2 bg-[#D4AF37] text-black px-5 py-3 sm:py-4 hover:bg-[#E5C25A] active:bg-[#B3932E] transition-all rounded-xl font-bold uppercase tracking-widest text-[10px] sm:text-xs shadow-lg active:scale-95 cursor-pointer focus:outline-none"
           >
             <Plus className="w-4 h-4" />
             Add Single
@@ -239,7 +249,7 @@ export function InventorySection({ pendingBarcode, clearPendingBarcode }: { pend
 
             <div className="mt-8 pt-6 border-t border-[#2A2A2A]">
               <h3 className="text-[10px] uppercase tracking-widest text-[#888] mb-4">Critical Depletions</h3>
-              <div className="space-y-3">
+              <div className="space-y-3 max-h-48 overflow-y-auto pr-2">
                 {lowStockItems.length > 0 ? (
                   lowStockItems.map(item => (
                     <div key={`low-${item.id}`} className="flex justify-between items-center text-sm p-2 bg-[#14161C] border border-[#2A2A2A] rounded-xl">
@@ -272,6 +282,34 @@ export function InventorySection({ pendingBarcode, clearPendingBarcode }: { pend
                 )}
               </div>
             </div>
+
+            {/* Missing Barcodes Section */}
+            <div className="mt-8 pt-6 border-t border-[#2A2A2A]">
+              <h3 className="text-[10px] uppercase tracking-widest text-[#888] mb-4 flex items-center gap-2 text-yellow-500">
+                <AlertTriangle className="w-3 h-3" />
+                Missing SKUs / Barcodes
+              </h3>
+              <div className="space-y-3 max-h-48 overflow-y-auto pr-2">
+                {items.filter(i => !i.barcode).length > 0 ? (
+                  items.filter(i => !i.barcode).map(item => (
+                    <div key={`noupc-${item.id}`} className="flex justify-between items-center text-sm p-2 bg-[#14161C] border border-[#2A2A2A] rounded-xl">
+                      <div className="flex flex-col">
+                        <span className="text-[#E5E1DA] font-serif">{item.brand} <span className="text-[#888] text-xs font-sans">({item.flavor})</span></span>
+                        <span className="text-yellow-500 font-mono text-[10px] mt-1">MISSING UPC</span>
+                      </div>
+                      <button 
+                        onClick={() => openEditForm(item)}
+                        className="bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 hover:bg-yellow-500/20 px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-widest font-bold transition-colors"
+                      >
+                        Update
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-[#444] italic">All active items have SKUs.</p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -290,6 +328,13 @@ export function InventorySection({ pendingBarcode, clearPendingBarcode }: { pend
       {isBulkFormOpen && (
         <BulkInventoryForm 
           onClose={() => setIsBulkFormOpen(false)} 
+        />
+      )}
+
+      {isBrandsOverviewOpen && (
+        <BrandsOverviewModal 
+          onClose={() => setIsBrandsOverviewOpen(false)}
+          items={items}
         />
       )}
 
