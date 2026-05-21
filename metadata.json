@@ -1,6 +1,6 @@
 {
-  "name": "Cigaar Archive",
-  "description": "Inventory Management System for Cigarillos",
+  "name": "Smoke OS",
+  "description": "Unified Inventory and POS System for Smoke Shops",
   "requestFramePermissions": [
     "camera"
   ],

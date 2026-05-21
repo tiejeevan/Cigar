@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db, InventoryItem } from '@/lib/db';
+import { db, InventoryItem, useLiveQuery } from '@/lib/db';
 import { InventoryForm } from '@/components/inventory-form';
 import { OverviewChart } from '@/components/overview-chart';
 import { Plus, Package, AlertTriangle, Archive, Search, Filter, Pencil, Trash2, ArrowUpDown, AlertCircle } from 'lucide-react';
@@ -13,6 +12,7 @@ export function InventorySection({ pendingBarcode, clearPendingBarcode }: { pend
   const [editingItem, setEditingItem] = useState<InventoryItem | undefined>();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterBrand, setFilterBrand] = useState<string>('all');
+  const [filterCategory, setFilterCategory] = useState<string>('all');
   const [itemToDelete, setItemToDelete] = useState<number | null>(null);
 
   useEffect(() => {
@@ -28,12 +28,14 @@ export function InventorySection({ pendingBarcode, clearPendingBarcode }: { pend
     const matchesSearch = item.brand.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           item.flavor.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesBrand = filterBrand === 'all' || item.brand === filterBrand;
-    return matchesSearch && matchesBrand;
+    const matchesCategory = filterCategory === 'all' || (item.category || 'Cigarillos') === filterCategory;
+    return matchesSearch && matchesBrand && matchesCategory;
   });
 
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
   const lowStockItems = items.filter(item => item.quantity <= item.reorderThreshold);
   const uniqueBrands = Array.from(new Set(items.map(i => i.brand)));
+  const uniqueCategories = Array.from(new Set(items.map(i => i.category || 'Cigarillos')));
 
   const handleDeleteRequest = (id: number) => {
     setItemToDelete(id);
@@ -121,12 +123,25 @@ export function InventorySection({ pendingBarcode, clearPendingBarcode }: { pend
               />
             </div>
             <div className="h-8 w-px bg-[#2A2A2A] hidden sm:block"></div>
-            <div className="flex items-center gap-3 px-2 py-2 sm:py-0 w-full sm:w-auto">
-              <Filter className="w-5 h-5 text-[#666]" />
+            <div className="flex flex-col sm:flex-row items-center gap-3 px-2 py-2 sm:py-0 w-full sm:w-auto">
+              <div className="flex items-center gap-2">
+                <Filter className="w-5 h-5 text-[#666]" />
+                <select 
+                  value={filterCategory}
+                  onChange={(e) => setFilterCategory(e.target.value)}
+                  className="bg-transparent border-none text-[#E5E1DA] text-sm py-2 focus:outline-none appearance-none cursor-pointer w-full text-center sm:text-left"
+                >
+                  <option value="all">All Categories</option>
+                  {uniqueCategories.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="h-4 w-px bg-[#2A2A2A] hidden sm:block"></div>
               <select 
                 value={filterBrand}
                 onChange={(e) => setFilterBrand(e.target.value)}
-                className="bg-transparent border-none text-[#E5E1DA] text-base py-2 focus:outline-none appearance-none cursor-pointer w-full text-center sm:text-left"
+                className="bg-transparent border-none text-[#E5E1DA] text-sm py-2 focus:outline-none appearance-none cursor-pointer w-full text-center sm:text-left"
               >
                 <option value="all">All Brands</option>
                 {uniqueBrands.map(b => (
@@ -150,8 +165,9 @@ export function InventorySection({ pendingBarcode, clearPendingBarcode }: { pend
                 <div className="flex-1 flex flex-col justify-between">
                   <div>
                     <div className="flex justify-between items-start mb-2">
-                      <div className="flex items-center gap-2">
-                        <p className="text-xs text-[#D4AF37] font-semibold uppercase tracking-widest">{item.flavor}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[9px] bg-[#1F2127] border border-[#2A2A2A] px-2 py-1 rounded-md text-[#D4AF37] uppercase tracking-wider">{item.category || 'Cigarillos'}</span>
+                        <p className="text-xs text-[#888] font-semibold uppercase tracking-widest">{item.flavor}</p>
                         <span className="text-[9px] bg-[#14161C] border border-[#2A2A2A] px-2 py-1 rounded-md text-[#888] uppercase tracking-wider">{item.packType || 'Single'}</span>
                       </div>
                       <div className="flex gap-1 bg-[#14161C] rounded-lg p-1">
@@ -224,6 +240,7 @@ export function InventorySection({ pendingBarcode, clearPendingBarcode }: { pend
                             inventoryId: item.id,
                             brand: item.brand,
                             flavor: item.flavor,
+                            category: item.category || 'Cigarillos',
                             packType: item.packType,
                             quantity: 5,
                             status: 'pending',

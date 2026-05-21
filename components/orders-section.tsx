@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db, OrderItem } from '@/lib/db';
+import { db, OrderItem, useLiveQuery } from '@/lib/db';
+import { PRODUCT_CATEGORIES } from '@/lib/constants';
 import { ShoppingBag, Search, Plus, Trash2, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -10,6 +10,7 @@ export function OrdersSection() {
   const [searchQuery, setSearchQuery] = useState('');
   const [newBrand, setNewBrand] = useState('');
   const [newFlavor, setNewFlavor] = useState('');
+  const [newCategory, setNewCategory] = useState('Cigarillos');
   const [newPackType, setNewPackType] = useState('Box');
   const [newQty, setNewQty] = useState('1');
   
@@ -36,6 +37,7 @@ export function OrdersSection() {
       inventoryId: existing?.id,
       brand: newBrand,
       flavor: newFlavor,
+      category: newCategory,
       packType: newPackType,
       quantity: parseInt(newQty) || 1,
       status: 'pending',
@@ -95,6 +97,7 @@ export function OrdersSection() {
                     <div className={`w-2 h-12 rounded-full ${order.status === 'pending' ? 'bg-[#D4AF37]' : 'bg-[#22C55E]'}`}></div>
                     <div>
                       <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[9px] bg-[#1F2127] border border-[#2A2A2A] px-2 py-0.5 rounded text-[#D4AF37] uppercase tracking-wider">{order.category || 'Cigarillos'}</span>
                         <span className="text-[10px] bg-[#14161C] border border-[#2A2A2A] px-2 py-0.5 rounded text-[#888] uppercase tracking-wider">{order.packType}</span>
                         <span className={`text-[10px] uppercase tracking-widest font-bold ${order.status === 'pending' ? 'text-[#D4AF37]' : 'text-[#22C55E]'}`}>{order.status}</span>
                       </div>
@@ -135,6 +138,17 @@ export function OrdersSection() {
           </h3>
           
           <form onSubmit={handleCreateOrder} className="space-y-5">
+            <div className="space-y-2 relative">
+              <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-semibold">Category</label>
+              <select
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-4 text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl shadow-inner appearance-none cursor-pointer"
+              >
+                {PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+
             <div className="space-y-2 relative">
               <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-semibold">Brand / Vendor</label>
               <input

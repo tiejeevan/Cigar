@@ -24,3 +24,16 @@ export const CATEGORIES = [
   'Silver',
   'Other'
 ];
+
+export const PRODUCT_CATEGORIES = [
+  'Cigarillos',
+  'Disposable Vapes',
+  'Vape Juice',
+  'Hardware',
+  'Glassware',
+  'Rolling Papers',
+  'Premium Cigars',
+  'Lighters & Accessories',
+  'Snacks & Drinks',
+  'Other'
+];

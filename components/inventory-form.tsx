@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { db, InventoryItem } from '@/lib/db';
-import { CATEGORIES, DEFAULT_BRANDS } from '@/lib/constants';
+import { CATEGORIES, DEFAULT_BRANDS, PRODUCT_CATEGORIES } from '@/lib/constants';
 import { UploadCloud, X, ScanBarcode } from 'lucide-react';
 import { toast } from 'sonner';
 import { BarcodeScanner } from './barcode-scanner';
@@ -16,6 +16,7 @@ interface InventoryFormProps {
 export function InventoryForm({ onClose, existingItem, initialBarcode }: InventoryFormProps) {
   const [brand, setBrand] = useState(existingItem?.brand || '');
   const [flavor, setFlavor] = useState(existingItem?.flavor || '');
+  const [category, setCategory] = useState(existingItem?.category || 'Cigarillos');
   const [packType, setPackType] = useState(existingItem?.packType || 'Single');
   const [quantity, setQuantity] = useState(existingItem?.quantity?.toString() || '0');
   const [reorderThreshold, setReorderThreshold] = useState(existingItem?.reorderThreshold?.toString() || '10');
@@ -91,6 +92,7 @@ export function InventoryForm({ onClose, existingItem, initialBarcode }: Invento
       const item: InventoryItem = {
         brand: brand.trim(),
         flavor: flavor.trim(),
+        category: category,
         packType: packType,
         quantity: parseInt(quantity, 10) || 0,
         reorderThreshold: parseInt(reorderThreshold, 10) || 0,
@@ -149,8 +151,19 @@ export function InventoryForm({ onClose, existingItem, initialBarcode }: Invento
                 </div>
               </div>
 
-              {/* Brand and Flavor */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              {/* Category, Brand and Flavor */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                <div className="space-y-2">
+                  <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-semibold">Category</label>
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-4 text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl shadow-sm appearance-none cursor-pointer"
+                  >
+                    {PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+
                 <div className="space-y-2">
                   <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-semibold">Brand Origin</label>
                   <input

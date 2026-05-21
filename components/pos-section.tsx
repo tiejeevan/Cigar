@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/lib/db';
+import { db, useLiveQuery } from '@/lib/db';
 import { Search, Plus, Minus, CreditCard, ShoppingCart, Package, ScanBarcode } from 'lucide-react';
 import { toast } from 'sonner';
 import { BarcodeScanner } from './barcode-scanner';
@@ -155,7 +154,9 @@ export function PosSection({ onBarcodeNotFound }: { onBarcodeNotFound?: (barcode
                   <Package className="w-8 h-8 text-[#2A2A2A]" />
                 )}
               </div>
-              <p className="text-[10px] text-[#D4AF37] font-semibold uppercase tracking-widest mb-1">{item.flavor}</p>
+              <p className="text-[10px] text-[#D4AF37] font-semibold uppercase tracking-widest mb-1 truncate w-full">
+                {item.category || 'Cigarillos'} &bull; {item.flavor}
+              </p>
               <h3 className="text-lg font-serif text-[#E5E1DA] leading-tight mb-2 truncate w-full">{item.brand}</h3>
               <div className="mt-auto flex justify-between items-center w-full">
                 <span className="text-sm font-mono text-[#22C55E] font-bold">${item.price?.toFixed(2) || '0.00'}</span>

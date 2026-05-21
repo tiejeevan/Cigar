@@ -19,8 +19,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Cigaar Archive',
-  description: 'Inventory Management System',
+  title: 'Smoke OS',
+  description: 'Unified Inventory and POS System',
 };
 
 export default function RootLayout({
