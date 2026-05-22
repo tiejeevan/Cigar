@@ -1,21 +1,23 @@
 'use client';
 
 import { useState } from 'react';
-import { db, OrderItem, useLiveQuery } from '@/lib/db';
+import { db, OrderItem, InventoryItem } from '@/lib/db';
 import { PRODUCT_CATEGORIES } from '@/lib/constants';
 import { ShoppingBag, Search, Plus, Trash2, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
-export function OrdersSection() {
+interface OrdersSectionProps {
+  orders: OrderItem[];
+  inventory: InventoryItem[];
+}
+
+export function OrdersSection({ orders, inventory }: OrdersSectionProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [newBrand, setNewBrand] = useState('');
   const [newFlavor, setNewFlavor] = useState('');
   const [newCategory, setNewCategory] = useState('Cigarillos');
   const [newPackType, setNewPackType] = useState('Box');
   const [newQty, setNewQty] = useState('1');
-  
-  const orders = useLiveQuery(() => db.orders.toArray()) || [];
-  const inventory = useLiveQuery(() => db.items.toArray()) || [];
   
   const filteredOrders = orders.filter(o => 
     o.brand.toLowerCase().includes(searchQuery.toLowerCase()) || 

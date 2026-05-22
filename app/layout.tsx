@@ -19,7 +19,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Smoke OS',
+  title: 'Gaint Mart',
   description: 'Unified Inventory and POS System',
 };
 

@@ -1,4 +1,24 @@
 import { useState, useEffect } from 'react';
+import Dexie, { type Table } from 'dexie';
+
+export interface CachedImage {
+  id: number;
+  image?: string;
+  updatedAt: number;
+}
+
+class GaintMartImageCacheDB extends Dexie {
+  images!: Table<CachedImage, number>;
+
+  constructor() {
+    super('GaintMartImageCache');
+    this.version(1).stores({
+      images: 'id, updatedAt'
+    });
+  }
+}
+
+export const imageCacheDb = typeof window !== 'undefined' ? new GaintMartImageCacheDB() : null;
 
 export interface InventoryItem {
   id?: number;
@@ -87,6 +107,13 @@ export const db = {
     },
     delete: async (id: number) => {
       await apiCall({ action: 'deleteItem', id });
+      if (typeof window !== 'undefined' && imageCacheDb) {
+        try {
+          await imageCacheDb.images.delete(id);
+        } catch (err) {
+          console.error('Failed to delete cached image:', err);
+        }
+      }
       notifyDbChanged();
     },
     where: (field: string) => {
@@ -123,6 +150,81 @@ export const db = {
       await apiCall({ action: 'deleteOrder', id });
       notifyDbChanged();
     }
+  },
+  getItemImage: async (id: number, updatedAt: number): Promise<string | undefined> => {
+    if (typeof window === 'undefined' || !imageCacheDb) return undefined;
+    try {
+      // Check cache first
+      const cached = await imageCacheDb.images.get(id);
+      if (cached && cached.updatedAt === updatedAt) {
+        return cached.image;
+      }
+      // Cache miss or outdated -> fetch from api
+      const res = await apiCall({ action: 'getItemImage', id });
+      const image = res?.image || '';
+      // Put in cache
+      await imageCacheDb.images.put({ id, image, updatedAt });
+      return image || undefined;
+    } catch (error) {
+      console.error('Failed to get item image:', error);
+      return undefined;
+    }
+  },
+  exportBackupData: async () => {
+    const res = await apiCall({ action: 'getItemsWithImages' });
+    const items = (res || []) as InventoryItem[];
+    const orders = await db.orders.toArray();
+    return {
+      version: '1.0',
+      exportTimestamp: Date.now(),
+      items,
+      orders
+    };
+  },
+  importBackupData: async (backupData: any, conflictStrategy: 'overwrite' | 'merge' | 'skip') => {
+    if (!backupData || typeof backupData !== 'object') {
+      throw new Error('Invalid backup data format');
+    }
+    if (!Array.isArray(backupData.items)) {
+      throw new Error('Backup data items must be an array');
+    }
+    if (backupData.orders && !Array.isArray(backupData.orders)) {
+      throw new Error('Backup data orders must be an array');
+    }
+
+    const itemsResult = await apiCall({ 
+      action: 'bulkUpsertItems', 
+      items: backupData.items, 
+      conflictStrategy 
+    });
+
+    const ordersResult = backupData.orders && backupData.orders.length > 0
+      ? await apiCall({ action: 'bulkInsertOrders', orders: backupData.orders })
+      : { success: true };
+
+    notifyDbChanged();
+
+    return {
+      itemsCount: backupData.items.length,
+      ordersCount: (backupData.orders || []).length,
+      success: !!(itemsResult?.success && ordersResult?.success)
+    };
+  },
+  wipeDatabase: async () => {
+    await apiCall({ action: 'wipeDatabase' });
+    if (typeof window !== 'undefined' && imageCacheDb) {
+      try {
+        await imageCacheDb.images.clear();
+      } catch (err) {
+        console.error('Failed to clear image cache:', err);
+      }
+    }
+    notifyDbChanged();
+  },
+  mergeDuplicateBrands: async () => {
+    const res = await apiCall({ action: 'mergeDuplicateBrands' });
+    notifyDbChanged();
+    return res;
   }
 };
 
@@ -131,11 +233,20 @@ export function useLiveQuery<T>(querier: () => Promise<T>, deps: any[] = []): T 
 
   useEffect(() => {
     let active = true;
+    let loading = false;
 
     async function load() {
-      const result = await querier();
-      if (active && result !== null && result !== undefined) {
-        setData(result);
+      if (loading) return;
+      loading = true;
+      try {
+        const result = await querier();
+        if (active && result !== null && result !== undefined) {
+          setData(result);
+        }
+      } catch (err) {
+        console.error('Error loading data in useLiveQuery:', err);
+      } finally {
+        loading = false;
       }
     }
 
@@ -149,15 +260,11 @@ export function useLiveQuery<T>(querier: () => Promise<T>, deps: any[] = []): T 
       DB_EVENTS.addEventListener('change', handler);
     }
 
-    // Poll every 10 seconds to catch changes from other devices/screens
-    const interval = setInterval(load, 10000);
-
     return () => {
       active = false;
       if (DB_EVENTS) {
         DB_EVENTS.removeEventListener('change', handler);
       }
-      clearInterval(interval);
     };
   }, deps);
 

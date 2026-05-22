@@ -1,15 +1,22 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { db, InventoryItem, useLiveQuery } from '@/lib/db';
+import { db, InventoryItem } from '@/lib/db';
 import { InventoryForm } from '@/components/inventory-form';
 import { BulkInventoryForm } from '@/components/bulk-inventory-form';
 import { BrandsOverviewModal } from '@/components/brands-overview-modal';
 import { OverviewChart } from '@/components/overview-chart';
 import { Plus, Package, AlertTriangle, Archive, Search, Filter, Pencil, Trash2, ArrowUpDown, AlertCircle, Layers, Tag } from 'lucide-react';
 import { toast } from 'sonner';
+import { LazyItemImage } from './lazy-item-image';
 
-export function InventorySection({ pendingBarcode, clearPendingBarcode }: { pendingBarcode?: string | null, clearPendingBarcode?: () => void }) {
+interface InventorySectionProps {
+  items: InventoryItem[];
+  pendingBarcode?: string | null;
+  clearPendingBarcode?: () => void;
+}
+
+export function InventorySection({ items, pendingBarcode, clearPendingBarcode }: InventorySectionProps) {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isBulkFormOpen, setIsBulkFormOpen] = useState(false);
   const [isBrandsOverviewOpen, setIsBrandsOverviewOpen] = useState(false);
@@ -18,6 +25,14 @@ export function InventorySection({ pendingBarcode, clearPendingBarcode }: { pend
   const [filterBrand, setFilterBrand] = useState<string>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [itemToDelete, setItemToDelete] = useState<number | null>(null);
+  const [expandedBrands, setExpandedBrands] = useState<Record<string, boolean>>({});
+
+  const toggleBrandExpand = (brand: string) => {
+    setExpandedBrands(prev => ({
+      ...prev,
+      [brand]: !prev[brand]
+    }));
+  };
 
   useEffect(() => {
     if (pendingBarcode) {
@@ -25,8 +40,6 @@ export function InventorySection({ pendingBarcode, clearPendingBarcode }: { pend
       setIsFormOpen(true);
     }
   }, [pendingBarcode]);
-  
-  const items = useLiveQuery(() => db.items.toArray()) || [];
   
   const filteredItems = items.filter(item => {
     const matchesSearch = item.brand.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -40,6 +53,16 @@ export function InventorySection({ pendingBarcode, clearPendingBarcode }: { pend
   const lowStockItems = items.filter(item => item.quantity <= item.reorderThreshold);
   const uniqueBrands = Array.from(new Set(items.map(i => i.brand)));
   const uniqueCategories = Array.from(new Set(items.map(i => i.category || 'Cigarillos')));
+
+  // Group filtered items by brand
+  const itemsByBrand: Record<string, InventoryItem[]> = {};
+  filteredItems.forEach(item => {
+    if (!itemsByBrand[item.brand]) {
+      itemsByBrand[item.brand] = [];
+    }
+    itemsByBrand[item.brand].push(item);
+  });
+  const sortedBrands = Object.keys(itemsByBrand).sort();
 
   const handleDeleteRequest = (id: number) => {
     setItemToDelete(id);
@@ -174,63 +197,104 @@ export function InventorySection({ pendingBarcode, clearPendingBarcode }: { pend
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredItems.map(item => (
-              <div key={item.id} className="bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl p-5 group hover:border-[#D4AF37]/50 transition-colors flex gap-4 shadow-sm">
-                <div className="w-24 h-28 flex-shrink-0 bg-[#14161C] border border-[#2A2A2A] rounded-xl flex items-center justify-center overflow-hidden">
-                  {item.image ? (
-                    <img src={item.image} alt={item.brand} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
-                  ) : (
-                    <Package className="w-10 h-10 text-[#2A2A2A]" />
+          <div className="space-y-8">
+            {sortedBrands.map(brand => {
+              const brandItems = itemsByBrand[brand];
+              const isExpanded = expandedBrands[brand] || filterBrand !== 'all';
+              const itemsToRender = isExpanded ? brandItems : brandItems.slice(0, 4);
+
+              return (
+                <div key={brand} className="bg-[#0A0C0F]/45 border border-[#2A2A2A]/40 rounded-2xl p-6 shadow-sm">
+                  {/* Brand Header */}
+                  <div className="flex justify-between items-center border-b border-[#2A2A2A] pb-3 mb-5">
+                    <div className="flex items-center gap-3">
+                      <h3 className="text-xl font-serif text-[#D4AF37] italic font-bold tracking-wide">{brand}</h3>
+                      <span className="text-[9px] bg-[#14161C] border border-[#2A2A2A] px-2.5 py-0.5 rounded-full text-gray-400 font-mono font-bold tracking-wider">
+                        {brandItems.length} {brandItems.length === 1 ? 'SKU' : 'SKUs'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Items Grid for this Brand */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {itemsToRender.map(item => (
+                      <div key={item.id} className="bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl p-5 group hover:border-[#D4AF37]/50 transition-colors flex gap-4 shadow-sm">
+                        <div className="w-24 h-28 flex-shrink-0 bg-[#14161C] border border-[#2A2A2A] rounded-xl flex items-center justify-center overflow-hidden">
+                          <LazyItemImage itemId={item.id} updatedAt={item.updatedAt} alt={item.brand} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                        
+                        <div className="flex-1 flex flex-col justify-between">
+                          <div>
+                            <div className="flex justify-between items-start mb-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-[9px] bg-[#1F2127] border border-[#2A2A2A] px-2 py-1 rounded-md text-[#D4AF37] uppercase tracking-wider">{item.category || 'Cigarillos'}</span>
+                                <p className="text-xs text-[#888] font-semibold uppercase tracking-widest">{item.flavor}</p>
+                                <span className="text-[9px] bg-[#14161C] border border-[#2A2A2A] px-2 py-1 rounded-md text-[#888] uppercase tracking-wider">{item.packType || 'Single'}</span>
+                              </div>
+                              <div className="flex gap-1 bg-[#14161C] rounded-lg p-1">
+                                <button onClick={() => openEditForm(item)} className="p-2 text-[#888] hover:text-[#D4AF37] hover:bg-[#2A2A2A] rounded-md transition-all active:scale-95"><Pencil className="w-4 h-4" /></button>
+                                <button onClick={() => item.id && handleDeleteRequest(item.id)} className="p-2 text-[#888] hover:text-[#C2410C] hover:bg-[#2A2A2A] rounded-md transition-all active:scale-95"><Trash2 className="w-4 h-4" /></button>
+                              </div>
+                            </div>
+                            <h3 className="text-2xl font-serif text-[#E5E1DA] leading-tight mb-1">{item.brand}</h3>
+                            <div className="flex items-center gap-2 mt-1">
+                              {item.barcode && <p className="text-[10px] text-[#666] font-mono tracking-widest">SKU: {item.barcode}</p>}
+                              {item.price && <p className="text-[10px] text-[#22C55E] font-mono tracking-widest">${item.price.toFixed(2)}</p>}
+                            </div>
+                          </div>
+                          
+                          <div className="flex justify-between items-end mt-4">
+                            <div className="flex items-center bg-[#14161C] border border-[#2A2A2A] rounded-xl overflow-hidden shadow-inner">
+                              <button 
+                                onClick={() => item.id && changeQuantity(item.id, -1, item.quantity)}
+                                className="px-4 py-2 text-[#888] hover:text-[#D4AF37] hover:bg-[#1F2127] active:bg-[#2A2A2A] transition-all text-xl font-medium leading-none"
+                              >-</button>
+                              <span className="text-lg font-mono px-3 text-[#E5E1DA] min-w-[3rem] text-center">{item.quantity}</span>
+                              <button 
+                                onClick={() => item.id && changeQuantity(item.id, 1, item.quantity)}
+                                className="px-4 py-2 text-[#888] hover:text-[#D4AF37] hover:bg-[#1F2127] active:bg-[#2A2A2A] transition-all text-xl font-medium leading-none"
+                              >+</button>
+                            </div>
+                            
+                            {item.quantity <= item.reorderThreshold && (
+                              <span className="text-[10px] px-2 py-1 bg-[#C2410C]/10 border border-[#C2410C]/30 rounded-md uppercase tracking-widest text-[#C2410C] flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-[#C2410C] animate-pulse"></span>
+                                Reorder
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* View All / Show Less button */}
+                  {brandItems.length > 4 && filterBrand === 'all' && (
+                    <div className="flex justify-center mt-5">
+                      <button
+                        onClick={() => toggleBrandExpand(brand)}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-[#14161C] border border-[#2A2A2A] hover:border-[#D4AF37]/50 hover:bg-[#1A1C23] text-xs text-gray-300 hover:text-white rounded-xl transition-all duration-300 active:scale-95 font-semibold font-mono tracking-wider shadow-sm cursor-pointer"
+                      >
+                        {isExpanded ? (
+                          <>
+                            <span>Show Less</span>
+                            <span className="text-[9px] text-[#D4AF37]">▲</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>View All ({brandItems.length} items)</span>
+                            <span className="text-[9px] text-[#D4AF37]">▼</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   )}
                 </div>
-                
-                <div className="flex-1 flex flex-col justify-between">
-                  <div>
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[9px] bg-[#1F2127] border border-[#2A2A2A] px-2 py-1 rounded-md text-[#D4AF37] uppercase tracking-wider">{item.category || 'Cigarillos'}</span>
-                        <p className="text-xs text-[#888] font-semibold uppercase tracking-widest">{item.flavor}</p>
-                        <span className="text-[9px] bg-[#14161C] border border-[#2A2A2A] px-2 py-1 rounded-md text-[#888] uppercase tracking-wider">{item.packType || 'Single'}</span>
-                      </div>
-                      <div className="flex gap-1 bg-[#14161C] rounded-lg p-1">
-                        <button onClick={() => openEditForm(item)} className="p-2 text-[#888] hover:text-[#D4AF37] hover:bg-[#2A2A2A] rounded-md transition-all active:scale-95"><Pencil className="w-4 h-4" /></button>
-                        <button onClick={() => item.id && handleDeleteRequest(item.id)} className="p-2 text-[#888] hover:text-[#C2410C] hover:bg-[#2A2A2A] rounded-md transition-all active:scale-95"><Trash2 className="w-4 h-4" /></button>
-                      </div>
-                    </div>
-                    <h3 className="text-2xl font-serif text-[#E5E1DA] leading-tight mb-1">{item.brand}</h3>
-                    <div className="flex items-center gap-2 mt-1">
-                      {item.barcode && <p className="text-[10px] text-[#666] font-mono tracking-widest">SKU: {item.barcode}</p>}
-                      {item.price && <p className="text-[10px] text-[#22C55E] font-mono tracking-widest">${item.price.toFixed(2)}</p>}
-                    </div>
-                  </div>
-                  
-                  <div className="flex justify-between items-end mt-4">
-                    <div className="flex items-center bg-[#14161C] border border-[#2A2A2A] rounded-xl overflow-hidden shadow-inner">
-                      <button 
-                        onClick={() => item.id && changeQuantity(item.id, -1, item.quantity)}
-                        className="px-4 py-2 text-[#888] hover:text-[#D4AF37] hover:bg-[#1F2127] active:bg-[#2A2A2A] transition-all text-xl font-medium leading-none"
-                      >-</button>
-                      <span className="text-lg font-mono px-3 text-[#E5E1DA] min-w-[3rem] text-center">{item.quantity}</span>
-                      <button 
-                        onClick={() => item.id && changeQuantity(item.id, 1, item.quantity)}
-                        className="px-4 py-2 text-[#888] hover:text-[#D4AF37] hover:bg-[#1F2127] active:bg-[#2A2A2A] transition-all text-xl font-medium leading-none"
-                      >+</button>
-                    </div>
-                    
-                    {item.quantity <= item.reorderThreshold && (
-                      <span className="text-[10px] px-2 py-1 bg-[#C2410C]/10 border border-[#C2410C]/30 rounded-md uppercase tracking-widest text-[#C2410C] flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-[#C2410C] animate-pulse"></span>
-                        Reorder
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-            
-            {filteredItems.length === 0 && (
-              <div className="col-span-full py-16 text-center border border-dashed border-[#2A2A2A] rounded-2xl">
+              );
+            })}
+
+            {sortedBrands.length === 0 && (
+              <div className="py-16 text-center border border-dashed border-[#2A2A2A] rounded-2xl bg-[#0D0F13]">
                 <p className="text-[10px] uppercase tracking-widest text-[#888]">No records found matching criteria.</p>
               </div>
             )}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { db, InventoryItem } from '@/lib/db';
 import { CATEGORIES, DEFAULT_BRANDS, PRODUCT_CATEGORIES } from '@/lib/constants';
 import { UploadCloud, X, ScanBarcode } from 'lucide-react';
@@ -25,6 +25,16 @@ export function InventoryForm({ onClose, existingItem, initialBarcode }: Invento
   const [image, setImage] = useState<string | undefined>(existingItem?.image);
   
   const [isScanning, setIsScanning] = useState(false);
+
+  useEffect(() => {
+    if (existingItem?.id) {
+      db.getItemImage(existingItem.id, existingItem.updatedAt).then((img) => {
+        if (img) {
+          setImage(img);
+        }
+      });
+    }
+  }, [existingItem]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

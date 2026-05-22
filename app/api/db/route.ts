@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 
+let tablesEnsured = false;
+
 // Lazily get the Neon SQL client
 function getSql() {
   const dbUrl = process.env.DATABASE_URL;
@@ -86,14 +88,21 @@ export async function POST(req: NextRequest) {
     }
 
     // Auto-bootstrap and verify tables exist on the fly using neon http query client
-    await ensureTables(sql);
+    if (!tablesEnsured) {
+      await ensureTables(sql);
+      tablesEnsured = true;
+    }
 
     const body = await req.json();
     const { action, id, item, order, updates, barcode } = body;
 
-    // 1. Fetch all items
+    // 1. Fetch all items (excluding image to optimize payload)
     if (action === 'getItems') {
-      const rows = await sql`SELECT * FROM items ORDER BY id DESC`;
+      const rows = await sql`
+        SELECT id, category, brand, flavor, "packType", quantity, "reorderThreshold", barcode, price, "updatedAt"
+        FROM items
+        ORDER BY id DESC
+      `;
       return NextResponse.json(rows.map(mapDbResult));
     }
 
@@ -103,10 +112,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(rows.map(mapDbResult));
     }
 
-    // 3. Find unique item by barcode
+    // 3. Find unique item by barcode (excluding image)
     if (action === 'getItemByBarcode') {
-      const rows = await sql`SELECT * FROM items WHERE barcode = ${barcode} LIMIT 1`;
+      const rows = await sql`
+        SELECT id, category, brand, flavor, "packType", quantity, "reorderThreshold", barcode, price, "updatedAt"
+        FROM items
+        WHERE barcode = ${barcode}
+        LIMIT 1
+      `;
       return NextResponse.json(rows.length > 0 ? mapDbResult(rows[0]) : null);
+    }
+
+    // 3a. Fetch dynamic single-item Base64 image
+    if (action === 'getItemImage') {
+      if (!id) {
+        return NextResponse.json({ error: 'Missing id' }, { status: 400 });
+      }
+      const rows = await sql`SELECT image FROM items WHERE id = ${id} LIMIT 1`;
+      return NextResponse.json({ image: rows.length > 0 ? rows[0].image : null });
+    }
+
+    // 3b. Fetch all items including images (exclusively for backups)
+    if (action === 'getItemsWithImages') {
+      const rows = await sql`SELECT * FROM items ORDER BY id DESC`;
+      return NextResponse.json(rows.map(mapDbResult));
     }
 
     // 4. Create new inventory item
@@ -236,6 +265,215 @@ export async function POST(req: NextRequest) {
     // 9. Delete purchasing order
     if (action === 'deleteOrder') {
       await sql`DELETE FROM orders WHERE id = ${id}`;
+      return NextResponse.json({ success: true });
+    }
+
+    // 10. Bulk upsert inventory items
+    if (action === 'bulkUpsertItems') {
+      const { items: backupItems, conflictStrategy } = body;
+      if (!Array.isArray(backupItems)) {
+        return NextResponse.json({ error: 'Items must be an array' }, { status: 400 });
+      }
+
+      const activeRows = await sql`SELECT * FROM items`;
+      const results = [];
+
+      for (const incoming of backupItems) {
+        let existing = null;
+        if (incoming.barcode) {
+          existing = activeRows.find(r => r.barcode === incoming.barcode);
+        } else {
+          existing = activeRows.find(r => 
+            r.brand.toLowerCase() === incoming.brand.toLowerCase() &&
+            r.flavor.toLowerCase() === incoming.flavor.toLowerCase() &&
+            r.packType.toLowerCase() === incoming.packType.toLowerCase()
+          );
+        }
+
+        if (existing) {
+          if (conflictStrategy === 'overwrite') {
+            const quantity = parseInt(incoming.quantity, 10) || 0;
+            const reorderThreshold = parseInt(incoming.reorderThreshold, 10) || 10;
+            const price = parseFloat(incoming.price) || 0.00;
+            await sql`
+              UPDATE items 
+              SET 
+                category = ${incoming.category || existing.category}, 
+                brand = ${incoming.brand}, 
+                flavor = ${incoming.flavor}, 
+                "packType" = ${incoming.packType || existing.packType}, 
+                quantity = ${quantity}, 
+                "reorderThreshold" = ${reorderThreshold}, 
+                image = ${incoming.image !== undefined ? incoming.image : existing.image}, 
+                price = ${price}, 
+                "updatedAt" = ${Date.now()}
+              WHERE id = ${existing.id}
+            `;
+            results.push({ action: 'overwrite', id: existing.id });
+          } else if (conflictStrategy === 'merge') {
+            const newQuantity = (parseInt(existing.quantity, 10) || 0) + (parseInt(incoming.quantity, 10) || 0);
+            await sql`
+              UPDATE items 
+              SET 
+                quantity = ${newQuantity}, 
+                "updatedAt" = ${Date.now()}
+              WHERE id = ${existing.id}
+            `;
+            results.push({ action: 'merge', id: existing.id });
+          } else {
+            results.push({ action: 'skip', id: existing.id });
+          }
+        } else {
+          const quantity = parseInt(incoming.quantity, 10) || 0;
+          const reorderThreshold = parseInt(incoming.reorderThreshold, 10) || 10;
+          const price = parseFloat(incoming.price) || 0.00;
+          await sql`
+            INSERT INTO items (category, brand, flavor, "packType", quantity, "reorderThreshold", image, barcode, price, "updatedAt")
+            VALUES (
+              ${incoming.category || 'Cigarillos'}, 
+              ${incoming.brand}, 
+              ${incoming.flavor}, 
+              ${incoming.packType || 'Single'}, 
+              ${quantity}, 
+              ${reorderThreshold}, 
+              ${incoming.image || null}, 
+              ${incoming.barcode || null}, 
+              ${price}, 
+              ${Date.now()}
+            )
+          `;
+          results.push({ action: 'insert' });
+        }
+      }
+      return NextResponse.json({ success: true, results });
+    }
+
+    // 11. Bulk insert purchasing orders
+    if (action === 'bulkInsertOrders') {
+      const { orders: backupOrders } = body;
+      if (!Array.isArray(backupOrders)) {
+        return NextResponse.json({ error: 'Orders must be an array' }, { status: 400 });
+      }
+
+      const activeOrders = await sql`SELECT * FROM orders`;
+      const results = [];
+
+      for (const incoming of backupOrders) {
+        const exists = activeOrders.some(r => 
+          r.brand.toLowerCase() === incoming.brand.toLowerCase() &&
+          r.flavor.toLowerCase() === incoming.flavor.toLowerCase() &&
+          Number(r.createdAt) === Number(incoming.createdAt) &&
+          parseInt(r.quantity, 10) === parseInt(incoming.quantity, 10)
+        );
+
+        if (!exists) {
+          await sql`
+            INSERT INTO orders ("inventoryId", category, brand, flavor, "packType", quantity, status, "createdAt")
+            VALUES (
+              ${incoming.inventoryId || null}, 
+              ${incoming.category || 'Cigarillos'}, 
+              ${incoming.brand}, 
+              ${incoming.flavor}, 
+              ${incoming.packType || 'Single'}, 
+              ${parseInt(incoming.quantity, 10) || 1}, 
+              ${incoming.status || 'pending'}, 
+              ${incoming.createdAt || Date.now()}
+            )
+          `;
+          results.push({ action: 'insert' });
+        } else {
+          results.push({ action: 'skip' });
+        }
+      }
+      return NextResponse.json({ success: true, results });
+    }
+
+    // 11a. Merge duplicate brand casings case-insensitively
+    if (action === 'mergeDuplicateBrands') {
+      const items = await sql`SELECT id, brand FROM items`;
+      const orders = await sql`SELECT id, brand FROM orders`;
+      
+      const brandGroups: { [lowerBrand: string]: { [originalBrand: string]: number } } = {};
+      
+      const addOccurrence = (brand: string) => {
+        if (!brand) return;
+        const lower = brand.toLowerCase();
+        if (!brandGroups[lower]) {
+          brandGroups[lower] = {};
+        }
+        brandGroups[lower][brand] = (brandGroups[lower][brand] || 0) + 1;
+      };
+      
+      items.forEach((item: any) => addOccurrence(item.brand));
+      orders.forEach((order: any) => addOccurrence(order.brand));
+      
+      const mergedBrands: string[] = [];
+      let updatedItemsCount = 0;
+      let updatedOrdersCount = 0;
+      const now = Date.now();
+      
+      for (const lower in brandGroups) {
+        const casingsMap = brandGroups[lower];
+        const casings = Object.keys(casingsMap);
+        
+        if (casings.length <= 1) {
+          continue;
+        }
+        
+        // Canonical selection logic:
+        // 1. Sort by frequency count (descending)
+        // 2. Tie-break by number of uppercase characters (descending)
+        // 3. Alphabetical tie-break as fallback
+        casings.sort((a, b) => {
+          const countA = casingsMap[a];
+          const countB = casingsMap[b];
+          if (countA !== countB) {
+            return countB - countA;
+          }
+          const upperA = (a.match(/[A-Z]/g) || []).length;
+          const upperB = (b.match(/[A-Z]/g) || []).length;
+          if (upperA !== upperB) {
+            return upperB - upperA;
+          }
+          return a.localeCompare(b);
+        });
+        
+        const canonical = casings[0];
+        const duplicates = casings.slice(1);
+        
+        for (const duplicate of duplicates) {
+          const itemUpdateRes = await sql`
+            UPDATE items 
+            SET brand = ${canonical}, "updatedAt" = ${now} 
+            WHERE brand = ${duplicate}
+            RETURNING id
+          `;
+          updatedItemsCount += itemUpdateRes.length;
+          
+          const orderUpdateRes = await sql`
+            UPDATE orders 
+            SET brand = ${canonical} 
+            WHERE brand = ${duplicate}
+            RETURNING id
+          `;
+          updatedOrdersCount += orderUpdateRes.length;
+          
+          mergedBrands.push(`${duplicate} → ${canonical}`);
+        }
+      }
+      
+      return NextResponse.json({
+        success: true,
+        mergedBrands,
+        updatedItemsCount,
+        updatedOrdersCount
+      });
+    }
+
+    // 12. Wipe all tables
+    if (action === 'wipeDatabase') {
+      await sql`DELETE FROM items`;
+      await sql`DELETE FROM orders`;
       return NextResponse.json({ success: true });
     }
 

@@ -2,14 +2,21 @@
 
 import { useState, useEffect } from 'react';
 import { InventorySection } from '@/components/inventory-section';
-import { PosSection } from '@/components/pos-section';
 import { OrdersSection } from '@/components/orders-section';
-import { Package, ShoppingCart, ShoppingBag, AlertCircle } from 'lucide-react';
+import { Package, ShoppingBag, AlertCircle, Settings } from 'lucide-react';
+import { SettingsModal } from '@/components/settings-modal';
+import { db, useLiveQuery } from '@/lib/db';
 
 export default function Home() {
-  const [currentView, setCurrentView] = useState<'pos' | 'inventory' | 'orders'>('pos');
+  const [currentView, setCurrentView] = useState<'inventory' | 'orders'>('inventory');
   const [pendingBarcode, setPendingBarcode] = useState<string | null>(null);
   const [dbError, setDbError] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+
+  const items = useLiveQuery(() => db.items.toArray(), []);
+  const orders = useLiveQuery(() => db.orders.toArray(), []);
+  const itemsCount = items?.length || 0;
+  const ordersCount = orders?.length || 0;
 
   useEffect(() => {
     // Check if DATABASE_URL is missing by listening to DB events
@@ -28,11 +35,18 @@ export default function Home() {
     <div className="min-h-screen flex flex-col bg-[#0A0B0E]">
       <div className="p-4 md:p-8 max-w-[1400px] mx-auto w-full flex flex-col pt-8 md:pt-12 flex-1">
         
-        <header className="mb-10 flex border-b border-[#2A2A2A] pb-8">
+        <header className="mb-10 flex justify-between items-center border-b border-[#2A2A2A] pb-8">
           <div>
-            <h1 className="text-4xl md:text-5xl font-serif text-[#D4AF37] italic tracking-tight mb-2">Smoke OS</h1>
+            <h1 className="text-4xl md:text-5xl font-serif text-[#D4AF37] italic tracking-tight mb-2">Gaint Mart</h1>
             <p className="text-[10px] uppercase tracking-[0.3em] text-[#888]">Unified Retail System</p>
           </div>
+          <button
+            onClick={() => setShowSettings(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#14161C] border border-[#2A2A2A] hover:border-[#D4AF37]/50 rounded-xl text-gray-300 hover:text-white transition-all duration-300 font-semibold text-xs uppercase tracking-wider active:scale-95 shadow-md"
+          >
+            <Settings className="w-4 h-4 text-[#D4AF37]" />
+            <span>Settings</span>
+          </button>
         </header>
 
         {dbError && (
@@ -43,7 +57,7 @@ export default function Home() {
               <div>
                 <h3 className="font-serif text-lg font-bold text-[#D4AF37] mb-2">Neon Serverless DB Connection Required</h3>
                 <p className="text-sm opacity-90 leading-relaxed mb-4">
-                  Smoke OS is fully configured with a serverless Postgres integration! To make your inventory, pricing, registers, and purchasing records permanent and consistent across all devices and tablets, please configure your Neon connection:
+                  Gaint Mart is fully configured with a serverless Postgres integration! To make your inventory, pricing, registers, and purchasing records permanent and consistent across all devices and tablets, please configure your Neon connection:
                 </p>
                 <ol className="list-decimal pl-5 text-sm opacity-80 space-y-2 mb-4">
                   <li>Retrieve your <strong>Postgres connection string</strong> from your <a href="https://neon.tech" target="_blank" className="text-[#D4AF37] underline font-semibold">Neon Console</a> dashboard.</li>
@@ -60,16 +74,7 @@ export default function Home() {
         )}
 
         {/* Unified Navigation Bar */}
-        <div className="flex bg-[#14161C] border border-[#2A2A2A] rounded-2xl p-2 mb-10 w-full max-w-2xl mx-auto shadow-md">
-          <button
-            onClick={() => setCurrentView('pos')}
-            className={`flex-1 flex items-center justify-center gap-3 py-4 text-sm tracking-widest uppercase transition-all duration-300 rounded-xl font-semibold ${currentView === 'pos' ? 'bg-[#2A2A2A] text-[#D4AF37] shadow-lg scale-[1.02]' : 'text-[#888] hover:text-[#E5E1DA] hover:bg-[#1A1C23]'}`}
-          >
-            <ShoppingCart className="w-5 h-5" />
-            <span className="hidden sm:inline">Register</span>
-            <span className="sm:hidden">POS</span>
-          </button>
-          
+        <div className="flex bg-[#14161C] border border-[#2A2A2A] rounded-2xl p-2 mb-10 w-full max-w-md mx-auto shadow-md">
           <button
             onClick={() => setCurrentView('inventory')}
             className={`flex-1 flex items-center justify-center gap-3 py-4 text-sm tracking-widest uppercase transition-all duration-300 rounded-xl font-semibold ${currentView === 'inventory' ? 'bg-[#2A2A2A] text-[#D4AF37] shadow-lg scale-[1.02]' : 'text-[#888] hover:text-[#E5E1DA] hover:bg-[#1A1C23]'}`}
@@ -91,27 +96,34 @@ export default function Home() {
 
         {/* Main Content Area */}
         <main className="flex-1">
-          {currentView === 'pos' && (
-            <PosSection 
-              onBarcodeNotFound={(barcode) => {
-                setPendingBarcode(barcode);
-                setCurrentView('inventory');
-              }} 
-            />
-          )}
           {currentView === 'inventory' && (
             <InventorySection 
+              items={items || []}
               pendingBarcode={pendingBarcode}
               clearPendingBarcode={() => setPendingBarcode(null)}
             />
           )}
-          {currentView === 'orders' && <OrdersSection />}
+          {currentView === 'orders' && (
+            <OrdersSection 
+              orders={orders || []}
+              inventory={items || []}
+            />
+          )}
         </main>
 
         <footer className="mt-20 pt-8 border-t border-[#2A2A2A] text-center">
            <p className="text-[9px] uppercase tracking-[0.4em] text-[#444]">Confidential & Proprietary</p>
         </footer>
       </div>
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <SettingsModal 
+          onClose={() => setShowSettings(false)}
+          activeItemsCount={itemsCount}
+          activeOrdersCount={ordersCount}
+        />
+      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { db, useLiveQuery } from '@/lib/db';
 import { Search, Plus, Minus, CreditCard, ShoppingCart, Package, ScanBarcode } from 'lucide-react';
 import { toast } from 'sonner';
 import { BarcodeScanner } from './barcode-scanner';
+import { LazyItemImage } from './lazy-item-image';
 
 export function PosSection({ onBarcodeNotFound }: { onBarcodeNotFound?: (barcode: string) => void }) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -148,11 +149,7 @@ export function PosSection({ onBarcodeNotFound }: { onBarcodeNotFound?: (barcode
               className="bg-[#14161C] border border-[#2A2A2A] rounded-xl p-4 text-left hover:border-[#D4AF37]/50 focus:border-[#D4AF37] transition-all group flex flex-col active:scale-95 shadow-sm"
             >
               <div className="h-20 w-full bg-[#0A0B0E] rounded-lg mb-3 flex items-center justify-center overflow-hidden border border-[#2A2A2A]">
-                {item.image ? (
-                  <img src={item.image} alt={item.brand} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
-                ) : (
-                  <Package className="w-8 h-8 text-[#2A2A2A]" />
-                )}
+                <LazyItemImage itemId={item.id} updatedAt={item.updatedAt} alt={item.brand} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
               </div>
               <p className="text-[10px] text-[#D4AF37] font-semibold uppercase tracking-widest mb-1 truncate w-full">
                 {item.category || 'Cigarillos'} &bull; {item.flavor}
