@@ -137,8 +137,8 @@ export function InventoryForm({ onClose, existingItem, initialBarcode }: Invento
             </button>
           </div>
           
-          <div className="overflow-y-auto p-5 sm:p-6 flex-1 bg-[#0A0B0E]/50">
-            <form id="inventory-form" onSubmit={handleSubmit} className="space-y-8">
+          <div className="overflow-y-auto p-4 sm:p-6 flex-1 bg-[#0A0B0E]/50">
+            <form id="inventory-form" onSubmit={handleSubmit} className="space-y-5 sm:space-y-8">
               {/* Barcode Section */}
               <div className="space-y-2">
                 <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-semibold">Barcode (SKU/UPC)</label>
@@ -148,27 +148,27 @@ export function InventoryForm({ onClose, existingItem, initialBarcode }: Invento
                     placeholder="Scan or enter manually"
                     value={barcode}
                     onChange={(e) => setBarcode(e.target.value)}
-                    className="flex-1 bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-4 text-base focus:outline-none focus:border-[#D4AF37] transition-colors font-mono rounded-xl shadow-sm"
+                    className="flex-1 bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3.5 sm:p-4 text-sm sm:text-base focus:outline-none focus:border-[#D4AF37] transition-colors font-mono rounded-xl shadow-sm"
                   />
                   <button
                     type="button"
                     onClick={() => setIsScanning(true)}
-                    className="px-6 bg-[#1F2127] border border-[#2A2A2A] text-[#D4AF37] hover:border-[#D4AF37] transition-colors flex items-center justify-center rounded-xl active:scale-95 shadow-sm"
+                    className="px-5 sm:px-6 bg-[#1F2127] border border-[#2A2A2A] text-[#D4AF37] hover:border-[#D4AF37] transition-colors flex items-center justify-center rounded-xl active:scale-95 shadow-sm"
                     title="Scan Barcode"
                   >
-                    <ScanBarcode className="w-6 h-6" />
+                    <ScanBarcode className="w-5.5 h-5.5 sm:w-6 sm:h-6" />
                   </button>
                 </div>
               </div>
 
               {/* Category, Brand and Flavor */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
                 <div className="space-y-2">
                   <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-semibold">Category</label>
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
-                    className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-4 text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl shadow-sm appearance-none cursor-pointer"
+                    className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3.5 sm:p-4 text-sm sm:text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl shadow-sm appearance-none cursor-pointer"
                   >
                     {PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
@@ -182,7 +182,7 @@ export function InventoryForm({ onClose, existingItem, initialBarcode }: Invento
                     placeholder="e.g. Swisher Sweets"
                     value={brand}
                     onChange={(e) => setBrand(e.target.value)}
-                    className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-4 text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl shadow-sm"
+                    className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3.5 sm:p-4 text-sm sm:text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl shadow-sm"
                     required
                   />
                   <datalist id="brand-options">
@@ -198,7 +198,7 @@ export function InventoryForm({ onClose, existingItem, initialBarcode }: Invento
                     placeholder="e.g. Grape"
                     value={flavor}
                     onChange={(e) => setFlavor(e.target.value)}
-                    className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-4 text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl shadow-sm"
+                    className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3.5 sm:p-4 text-sm sm:text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl shadow-sm"
                     required
                   />
                   <datalist id="flavor-options">
@@ -216,7 +216,7 @@ export function InventoryForm({ onClose, existingItem, initialBarcode }: Invento
                       key={pt}
                       type="button"
                       onClick={() => setPackType(pt)}
-                      className={`flex-1 py-4 text-sm tracking-widest uppercase transition-all duration-200 rounded-lg ${packType === pt ? 'bg-[#2A2A2A] text-[#D4AF37] font-bold shadow-md scale-[1.02]' : 'text-[#888] hover:text-[#E5E1DA] hover:bg-[#1F2127]'}`}
+                      className={`flex-1 py-3 sm:py-4 text-xs sm:text-sm tracking-widest uppercase transition-all duration-200 rounded-lg ${packType === pt ? 'bg-[#2A2A2A] text-[#D4AF37] font-bold shadow-md scale-[1.02]' : 'text-[#888] hover:text-[#E5E1DA] hover:bg-[#1F2127]'}`}
                     >
                       {pt}
                     </button>
@@ -225,30 +225,30 @@ export function InventoryForm({ onClose, existingItem, initialBarcode }: Invento
               </div>
 
               {/* Quantities */}
-              <div className="grid grid-cols-3 gap-4 bg-[#14161C] border border-[#2A2A2A] p-2 rounded-xl shadow-sm relative overflow-hidden">
-                <div className="space-y-4 p-4 pb-2 z-10 text-center border-r border-[#2A2A2A]">
+              <div className="grid grid-cols-3 gap-2 sm:gap-4 bg-[#14161C] border border-[#2A2A2A] p-1.5 sm:p-2 rounded-xl shadow-sm relative overflow-hidden">
+                <div className="space-y-3 sm:space-y-4 p-2 sm:p-4 pb-2 z-10 text-center border-r border-[#2A2A2A]">
                   <label className="block text-[10px] uppercase tracking-[0.2em] text-[#888] font-semibold">Current</label>
                   <input
                     type="number"
                     min="0"
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value)}
-                    className="w-full bg-[#0D0F13] border border-[#2A2A2A] rounded-xl text-[#D4AF37] p-3 text-2xl font-serif text-center focus:outline-none focus:border-[#D4AF37] transition-colors shadow-inner"
+                    className="w-full bg-[#0D0F13] border border-[#2A2A2A] rounded-xl text-[#D4AF37] p-2 sm:p-3 text-lg sm:text-2xl font-serif text-center focus:outline-none focus:border-[#D4AF37] transition-colors shadow-inner"
                     required
                   />
                 </div>
-                <div className="space-y-4 p-4 pb-2 z-10 text-center border-r border-[#2A2A2A]">
+                <div className="space-y-3 sm:space-y-4 p-2 sm:p-4 pb-2 z-10 text-center border-r border-[#2A2A2A]">
                   <label className="block text-[10px] uppercase tracking-[0.2em] text-[#888] font-semibold">Reorder</label>
                   <input
                     type="number"
                     min="0"
                     value={reorderThreshold}
                     onChange={(e) => setReorderThreshold(e.target.value)}
-                    className="w-full bg-[#0D0F13] border border-[#2A2A2A] rounded-xl text-[#E5E1DA] p-3 text-2xl font-serif text-center focus:outline-none focus:border-[#D4AF37] transition-colors shadow-inner"
+                    className="w-full bg-[#0D0F13] border border-[#2A2A2A] rounded-xl text-[#E5E1DA] p-2 sm:p-3 text-lg sm:text-2xl font-serif text-center focus:outline-none focus:border-[#D4AF37] transition-colors shadow-inner"
                     required
                   />
                 </div>
-                <div className="space-y-4 p-4 pb-2 z-10 text-center">
+                <div className="space-y-3 sm:space-y-4 p-2 sm:p-4 pb-2 z-10 text-center">
                   <label className="block text-[10px] uppercase tracking-[0.2em] text-[#888] font-semibold">Price ($)</label>
                   <input
                     type="number"
@@ -256,7 +256,7 @@ export function InventoryForm({ onClose, existingItem, initialBarcode }: Invento
                     min="0"
                     value={price}
                     onChange={(e) => setPrice(e.target.value)}
-                    className="w-full bg-[#0D0F13] border border-[#2A2A2A] rounded-xl text-[#22C55E] p-3 text-2xl font-serif text-center focus:outline-none focus:border-[#D4AF37] transition-colors shadow-inner"
+                    className="w-full bg-[#0D0F13] border border-[#2A2A2A] rounded-xl text-[#22C55E] p-2 sm:p-3 text-lg sm:text-2xl font-serif text-center focus:outline-none focus:border-[#D4AF37] transition-colors shadow-inner"
                     required
                   />
                 </div>
@@ -277,7 +277,7 @@ export function InventoryForm({ onClose, existingItem, initialBarcode }: Invento
                     </button>
                   </div>
                 ) : (
-                  <div className="mt-2 border-2 border-dashed border-[#2A2A2A] rounded-xl p-8 flex flex-col items-center justify-center bg-[#14161C] hover:border-[#D4AF37]/50 hover:bg-[#1A1C23] transition-colors cursor-pointer relative group active:bg-[#1F2127]">
+                  <div className="mt-2 border-2 border-dashed border-[#2A2A2A] rounded-xl p-6 sm:p-8 flex flex-col items-center justify-center bg-[#14161C] hover:border-[#D4AF37]/50 hover:bg-[#1A1C23] transition-colors cursor-pointer relative group active:bg-[#1F2127]">
                     <UploadCloud className="w-10 h-10 text-[#444] mb-3 group-hover:text-[#D4AF37]/50 transition-colors" />
                     <span className="text-xs uppercase tracking-widest text-[#888] font-semibold">Upload Image</span>
                     <input
@@ -293,18 +293,18 @@ export function InventoryForm({ onClose, existingItem, initialBarcode }: Invento
             </form>
           </div>
           
-          <div className="p-5 sm:p-6 border-t border-[#2A2A2A] bg-[#0D0F13] flex gap-4 flex-shrink-0 z-10">
+          <div className="sticky bottom-0 border-t border-[#2A2A2A] bg-[#0D0F13] p-4 sm:p-6 flex gap-3 w-full z-20">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-4 border border-[#2A2A2A] rounded-xl text-[#888] bg-transparent hover:text-[#E5E1DA] hover:bg-[#1A1C23] active:bg-[#1F2127] transition-all text-xs uppercase tracking-widest font-semibold"
+              className="flex-1 py-3.5 sm:py-4 border border-[#2A2A2A] rounded-xl text-[#888] bg-transparent hover:text-[#E5E1DA] hover:bg-[#1A1C23] active:bg-[#1F2127] transition-all text-xs uppercase tracking-widest font-semibold"
             >
               Cancel
             </button>
             <button
               type="submit"
               form="inventory-form"
-              className="flex-[2] py-4 rounded-xl bg-[#D4AF37] text-black border border-[#D4AF37] hover:bg-[#E5C25A] active:bg-[#B3932E] transition-all text-xs uppercase tracking-widest font-bold shadow-lg shadow-[#D4AF37]/10"
+              className="flex-[2] py-3.5 sm:py-4 rounded-xl bg-[#D4AF37] text-black border border-[#D4AF37] hover:bg-[#E5C25A] active:bg-[#B3932E] transition-all text-xs uppercase tracking-widest font-bold shadow-lg shadow-[#D4AF37]/10"
             >
               {existingItem ? 'Save Record' : 'Commit Entry'}
             </button>

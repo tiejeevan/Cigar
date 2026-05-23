@@ -94,33 +94,43 @@ export function OrdersSection({ orders, inventory }: OrdersSectionProps) {
           ) : (
             <div className="divide-y divide-[#2A2A2A]">
               {filteredOrders.map(order => (
-                <div key={order.id} className="p-5 flex items-center justify-between hover:bg-[#14161C] transition-colors">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-2 h-12 rounded-full ${order.status === 'pending' ? 'bg-[#D4AF37]' : 'bg-[#22C55E]'}`}></div>
+                <div key={order.id} className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-[#14161C] transition-colors gap-4">
+                  <div className="flex items-start sm:items-center gap-3 sm:gap-4">
+                    <div className={`w-1 sm:w-2 h-12 rounded-full shrink-0 ${order.status === 'pending' ? 'bg-[#D4AF37]' : 'bg-[#22C55E]'}`}></div>
                     <div>
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
                         <span className="text-[9px] bg-[#1F2127] border border-[#2A2A2A] px-2 py-0.5 rounded text-[#D4AF37] uppercase tracking-wider">{order.category || 'Cigarillos'}</span>
                         <span className="text-[10px] bg-[#14161C] border border-[#2A2A2A] px-2 py-0.5 rounded text-[#888] uppercase tracking-wider">{order.packType}</span>
                         <span className={`text-[10px] uppercase tracking-widest font-bold ${order.status === 'pending' ? 'text-[#D4AF37]' : 'text-[#22C55E]'}`}>{order.status}</span>
                       </div>
-                      <h4 className="text-lg font-serif text-[#E5E1DA]">{order.brand} <span className="text-[#888] font-sans text-sm">({order.flavor})</span></h4>
+                      <h4 className="text-base sm:text-lg font-serif text-[#E5E1DA]">{order.brand.toUpperCase()} <span className="text-[#888] font-sans text-xs sm:text-sm">({order.flavor})</span></h4>
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-6">
-                    <div className="text-center">
-                      <p className="text-[10px] uppercase tracking-widest text-[#888] mb-1">Qty</p>
-                      <p className="text-xl font-mono text-[#E5E1DA]">{order.quantity}</p>
+                  <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto border-t sm:border-t-0 border-[#2A2A2A]/40 pt-3 sm:pt-0">
+                    <div className="flex items-center gap-3 sm:text-center">
+                      <p className="text-[9px] sm:text-[10px] uppercase tracking-widest text-[#888] sm:mb-1">Qty:</p>
+                      <p className="text-lg sm:text-xl font-mono text-[#E5E1DA] bg-[#14161C] sm:bg-transparent px-3 py-1 sm:p-0 rounded-lg border border-[#2A2A2A]/40 sm:border-0">{order.quantity}</p>
                     </div>
                     
-                    <div className="flex gap-2 border-l border-[#2A2A2A] pl-6">
+                    <div className="flex gap-2 sm:border-l sm:border-[#2A2A2A] sm:pl-6">
                       {order.status === 'pending' && (
-                        <button onClick={() => markOrdered(order.id!)} className="p-3 text-[#22C55E] bg-[#22C55E]/10 hover:bg-[#22C55E]/20 rounded-xl transition-colors" title="Mark Ordered">
+                        <button 
+                          onClick={() => markOrdered(order.id!)} 
+                          className="p-3 sm:p-3 text-[#22C55E] bg-[#22C55E]/10 hover:bg-[#22C55E]/20 active:scale-95 transition-all rounded-xl flex items-center justify-center gap-1.5 px-4 sm:px-3 shadow-sm font-semibold" 
+                          title="Mark Ordered"
+                        >
                           <CheckCircle className="w-5 h-5" />
+                          <span className="sm:hidden text-xs uppercase tracking-wider font-bold">Receive</span>
                         </button>
                       )}
-                      <button onClick={() => handleDelete(order.id!)} className="p-3 text-[#C2410C] bg-[#C2410C]/10 hover:bg-[#C2410C]/20 rounded-xl transition-colors" title="Delete Order">
+                      <button 
+                        onClick={() => handleDelete(order.id!)} 
+                        className="p-3 sm:p-3 text-[#C2410C] bg-[#C2410C]/10 hover:bg-[#C2410C]/20 active:scale-95 transition-all rounded-xl flex items-center justify-center gap-1.5 px-4 sm:px-3 shadow-sm font-semibold" 
+                        title="Delete Order"
+                      >
                         <Trash2 className="w-5 h-5" />
+                        <span className="sm:hidden text-xs uppercase tracking-wider font-bold">Remove</span>
                       </button>
                     </div>
                   </div>
@@ -139,13 +149,13 @@ export function OrdersSection({ orders, inventory }: OrdersSectionProps) {
             Draft Requirement
           </h3>
           
-          <form onSubmit={handleCreateOrder} className="space-y-5">
+          <form onSubmit={handleCreateOrder} className="space-y-4">
             <div className="space-y-2 relative">
               <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-semibold">Category</label>
               <select
                 value={newCategory}
                 onChange={(e) => setNewCategory(e.target.value)}
-                className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-4 text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl shadow-inner appearance-none cursor-pointer"
+                className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3.5 sm:p-4 text-sm sm:text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl shadow-inner appearance-none cursor-pointer"
               >
                 {PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -157,14 +167,14 @@ export function OrdersSection({ orders, inventory }: OrdersSectionProps) {
                 type="text"
                 value={newBrand}
                 onChange={(e) => setNewBrand(e.target.value)}
-                className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-4 text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl shadow-inner"
+                className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3.5 sm:p-4 text-sm sm:text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl shadow-inner"
                 placeholder="e.g. Swisher"
                 required
               />
               {newBrand && brandSuggestions.length > 0 && !brandSuggestions.includes(newBrand) && (
                 <div className="absolute top-full left-0 right-0 mt-1 bg-[#1A1C23] border border-[#2A2A2A] rounded-xl overflow-hidden z-10 shadow-xl">
                   {brandSuggestions.map(s => (
-                    <button key={s} type="button" onClick={() => setNewBrand(s)} className="w-full text-left p-3 text-[#E5E1DA] hover:bg-[#2A2A2A] transition-colors text-sm">{s}</button>
+                    <button key={s} type="button" onClick={() => setNewBrand(s)} className="w-full text-left p-3.5 sm:p-3 text-[#E5E1DA] hover:bg-[#2A2A2A] transition-colors text-base sm:text-sm">{s.toUpperCase()}</button>
                   ))}
                 </div>
               )}
@@ -176,14 +186,14 @@ export function OrdersSection({ orders, inventory }: OrdersSectionProps) {
                 type="text"
                 value={newFlavor}
                 onChange={(e) => setNewFlavor(e.target.value)}
-                className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-4 text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl shadow-inner"
+                className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3.5 sm:p-4 text-sm sm:text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl shadow-inner"
                 placeholder="e.g. Grape"
                 required
               />
               {newFlavor && flavorSuggestions.length > 0 && !flavorSuggestions.includes(newFlavor) && (
                 <div className="absolute top-full left-0 right-0 mt-1 bg-[#1A1C23] border border-[#2A2A2A] rounded-xl overflow-hidden z-10 shadow-xl">
                   {flavorSuggestions.map(s => (
-                    <button key={s} type="button" onClick={() => setNewFlavor(s)} className="w-full text-left p-3 text-[#E5E1DA] hover:bg-[#2A2A2A] transition-colors text-sm">{s}</button>
+                    <button key={s} type="button" onClick={() => setNewFlavor(s)} className="w-full text-left p-3.5 sm:p-3 text-[#E5E1DA] hover:bg-[#2A2A2A] transition-colors text-base sm:text-sm">{s}</button>
                   ))}
                 </div>
               )}
@@ -195,7 +205,7 @@ export function OrdersSection({ orders, inventory }: OrdersSectionProps) {
                 <select
                   value={newPackType}
                   onChange={(e) => setNewPackType(e.target.value)}
-                  className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-4 text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl shadow-inner appearance-none cursor-pointer"
+                  className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3.5 sm:p-4 text-sm sm:text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl shadow-inner appearance-none cursor-pointer"
                 >
                   <option value="Single">Single</option>
                   <option value="Box">Box</option>
@@ -210,7 +220,7 @@ export function OrdersSection({ orders, inventory }: OrdersSectionProps) {
                   min="1"
                   value={newQty}
                   onChange={(e) => setNewQty(e.target.value)}
-                  className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-4 text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl shadow-inner text-center font-mono"
+                  className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3.5 sm:p-4 text-sm sm:text-base focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl shadow-inner text-center font-mono"
                   required
                 />
               </div>
@@ -218,7 +228,7 @@ export function OrdersSection({ orders, inventory }: OrdersSectionProps) {
 
             <button 
               type="submit"
-              className="w-full mt-4 bg-[#D4AF37] text-black py-4 rounded-xl font-bold uppercase tracking-widest text-sm shadow-lg hover:bg-[#E5C25A] active:bg-[#B3932E] transition-all"
+              className="w-full mt-4 bg-[#D4AF37] text-black py-3.5 sm:py-4 rounded-xl font-bold uppercase tracking-widest text-xs sm:text-sm shadow-lg hover:bg-[#E5C25A] active:bg-[#B3932E] transition-all cursor-pointer"
             >
               Add to Orders
             </button>

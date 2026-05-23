@@ -14,9 +14,10 @@ interface InventorySectionProps {
   items: InventoryItem[];
   pendingBarcode?: string | null;
   clearPendingBarcode?: () => void;
+  onSelectItem: (id: number) => void;
 }
 
-export function InventorySection({ items, pendingBarcode, clearPendingBarcode }: InventorySectionProps) {
+export function InventorySection({ items, pendingBarcode, clearPendingBarcode, onSelectItem }: InventorySectionProps) {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isBulkFormOpen, setIsBulkFormOpen] = useState(false);
   const [isBrandsOverviewOpen, setIsBrandsOverviewOpen] = useState(false);
@@ -127,29 +128,29 @@ export function InventorySection({ items, pendingBarcode, clearPendingBarcode }:
       </div>
 
       {/* Metrics Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl p-6 relative overflow-hidden group shadow-md">
-          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-            <Archive className="w-16 h-16 text-[#D4AF37]" />
+      <div className="grid grid-cols-3 gap-3 md:gap-6">
+        <div className="bg-[#0D0F13] border border-[#2A2A2A] rounded-xl sm:rounded-2xl p-3.5 sm:p-6 relative overflow-hidden group shadow-md">
+          <div className="absolute top-0 right-0 p-2 sm:p-4 opacity-5 sm:opacity-10 group-hover:opacity-20 transition-opacity">
+            <Archive className="w-8 h-8 sm:w-16 sm:h-16 text-[#D4AF37]" />
           </div>
-          <p className="text-[10px] uppercase tracking-widest text-[#888] mb-2">Total Arsenal</p>
-          <p className="text-4xl font-serif text-[#E5E1DA]">{totalItems}</p>
+          <p className="text-[8px] sm:text-[10px] uppercase tracking-wider sm:tracking-widest text-[#888] mb-1 sm:mb-2 line-clamp-1">Total Arsenal</p>
+          <p className="text-xl sm:text-4xl font-serif text-[#E5E1DA]">{totalItems}</p>
         </div>
         
-        <div className="bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl p-6 relative overflow-hidden group shadow-md">
-          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-            <Package className="w-16 h-16 text-[#D4AF37]" />
+        <div className="bg-[#0D0F13] border border-[#2A2A2A] rounded-xl sm:rounded-2xl p-3.5 sm:p-6 relative overflow-hidden group shadow-md">
+          <div className="absolute top-0 right-0 p-2 sm:p-4 opacity-5 sm:opacity-10 group-hover:opacity-20 transition-opacity">
+            <Package className="w-8 h-8 sm:w-16 sm:h-16 text-[#D4AF37]" />
           </div>
-          <p className="text-[10px] uppercase tracking-widest text-[#888] mb-2">Unique SKUs</p>
-          <p className="text-4xl font-serif text-[#E5E1DA]">{items.length}</p>
+          <p className="text-[8px] sm:text-[10px] uppercase tracking-wider sm:tracking-widest text-[#888] mb-1 sm:mb-2 line-clamp-1">Unique SKUs</p>
+          <p className="text-xl sm:text-4xl font-serif text-[#E5E1DA]">{items.length}</p>
         </div>
 
-        <div className={`bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl p-6 relative overflow-hidden group shadow-md ${lowStockItems.length > 0 ? 'border-b-[#C2410C]' : ''}`}>
-          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-            <AlertTriangle className={`w-16 h-16 ${lowStockItems.length > 0 ? 'text-[#C2410C]' : 'text-[#D4AF37]'}`} />
+        <div className={`bg-[#0D0F13] border border-[#2A2A2A] rounded-xl sm:rounded-2xl p-3.5 sm:p-6 relative overflow-hidden group shadow-md transition-all ${lowStockItems.length > 0 ? 'border-b-2 border-b-[#C2410C] sm:border-b-[#C2410C]' : ''}`}>
+          <div className="absolute top-0 right-0 p-2 sm:p-4 opacity-5 sm:opacity-10 group-hover:opacity-20 transition-opacity">
+            <AlertTriangle className={`w-8 h-8 sm:w-16 sm:h-16 ${lowStockItems.length > 0 ? 'text-[#C2410C]' : 'text-[#D4AF37]'}`} />
           </div>
-          <p className="text-[10px] uppercase tracking-widest text-[#888] mb-2">Low Stock Alerts</p>
-          <p className={`text-4xl font-serif ${lowStockItems.length > 0 ? 'text-[#C2410C]' : 'text-[#E5E1DA]'}`}>
+          <p className="text-[8px] sm:text-[10px] uppercase tracking-wider sm:tracking-widest text-[#888] mb-1 sm:mb-2 line-clamp-1">Low Stock</p>
+          <p className={`text-xl sm:text-4xl font-serif ${lowStockItems.length > 0 ? 'text-[#C2410C]' : 'text-[#E5E1DA]'}`}>
             {lowStockItems.length}
           </p>
         </div>
@@ -201,64 +202,89 @@ export function InventorySection({ items, pendingBarcode, clearPendingBarcode }:
             {sortedBrands.map(brand => {
               const brandItems = itemsByBrand[brand];
               const isExpanded = expandedBrands[brand] || filterBrand !== 'all';
-              const itemsToRender = isExpanded ? brandItems : brandItems.slice(0, 4);
+              const itemsToRender = isExpanded ? brandItems : brandItems.slice(0, 2);
 
               return (
-                <div key={brand} className="bg-[#0A0C0F]/45 border border-[#2A2A2A]/40 rounded-2xl p-6 shadow-sm">
+                <div key={brand} className="bg-[#0A0C0F]/45 border border-[#2A2A2A]/40 rounded-2xl p-3.5 sm:p-6 shadow-sm animate-in fade-in duration-300">
                   {/* Brand Header */}
-                  <div className="flex justify-between items-center border-b border-[#2A2A2A] pb-3 mb-5">
-                    <div className="flex items-center gap-3">
-                      <h3 className="text-xl font-serif text-[#D4AF37] italic font-bold tracking-wide">{brand}</h3>
-                      <span className="text-[9px] bg-[#14161C] border border-[#2A2A2A] px-2.5 py-0.5 rounded-full text-gray-400 font-mono font-bold tracking-wider">
+                  <div className="flex justify-between items-center border-b border-[#2A2A2A] pb-2 sm:pb-3 mb-3.5 sm:mb-5">
+                    <div 
+                      onClick={() => brandItems[0]?.id && onSelectItem(brandItems[0].id)}
+                      className="flex items-center gap-3 cursor-pointer group/brand hover:opacity-85 active:scale-98 transition-all"
+                      title={`View ${brand.toUpperCase()} detail page`}
+                    >
+                      <h3 className="text-xl font-serif text-[#D4AF37] italic font-bold tracking-wide group-hover/brand:underline">{brand.toUpperCase()}</h3>
+                      <span className="text-[9px] bg-[#14161C] border border-[#2A2A2A] px-2.5 py-0.5 rounded-full text-gray-400 font-mono font-bold tracking-wider group-hover/brand:border-[#D4AF37]/50">
                         {brandItems.length} {brandItems.length === 1 ? 'SKU' : 'SKUs'}
                       </span>
                     </div>
                   </div>
 
                   {/* Items Grid for this Brand */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-3 sm:gap-4">
                     {itemsToRender.map(item => (
-                      <div key={item.id} className="bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl p-5 group hover:border-[#D4AF37]/50 transition-colors flex gap-4 shadow-sm">
-                        <div className="w-24 h-28 flex-shrink-0 bg-[#14161C] border border-[#2A2A2A] rounded-xl flex items-center justify-center overflow-hidden">
+                      <div 
+                        key={item.id} 
+                        onClick={() => item.id && onSelectItem(item.id)}
+                        className="bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl p-3 sm:p-4.5 group hover:border-[#D4AF37]/50 transition-all cursor-pointer hover:bg-[#14161C]/25 flex flex-col gap-3 shadow-sm active:scale-[0.99] relative overflow-hidden"
+                      >
+                        {/* Image Container */}
+                        <div className="w-full h-28 sm:h-36 flex-shrink-0 bg-[#14161C] border border-[#2A2A2A] rounded-xl flex items-center justify-center overflow-hidden">
                           <LazyItemImage itemId={item.id} updatedAt={item.updatedAt} alt={item.brand} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
                         </div>
                         
-                        <div className="flex-1 flex flex-col justify-between">
+                        {/* Info & Metadata */}
+                        <div className="flex-1 flex flex-col justify-between gap-2.5">
                           <div>
-                            <div className="flex justify-between items-start mb-2">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-[9px] bg-[#1F2127] border border-[#2A2A2A] px-2 py-1 rounded-md text-[#D4AF37] uppercase tracking-wider">{item.category || 'Cigarillos'}</span>
-                                <p className="text-xs text-[#888] font-semibold uppercase tracking-widest">{item.flavor}</p>
-                                <span className="text-[9px] bg-[#14161C] border border-[#2A2A2A] px-2 py-1 rounded-md text-[#888] uppercase tracking-wider">{item.packType || 'Single'}</span>
+                            <div className="flex justify-between items-start gap-1 mb-1.5">
+                              <div className="flex flex-wrap items-center gap-1">
+                                <span className="text-[8px] bg-[#1F2127] border border-[#2A2A2A] px-1.5 py-0.5 rounded text-[#D4AF37] uppercase tracking-wider font-bold">{item.category || 'Cigarillos'}</span>
+                                <span className="text-[8px] bg-[#14161C] border border-[#2A2A2A] px-1.5 py-0.5 rounded text-[#888] uppercase tracking-wider font-bold">{item.packType || 'Single'}</span>
                               </div>
-                              <div className="flex gap-1 bg-[#14161C] rounded-lg p-1">
-                                <button onClick={() => openEditForm(item)} className="p-2 text-[#888] hover:text-[#D4AF37] hover:bg-[#2A2A2A] rounded-md transition-all active:scale-95"><Pencil className="w-4 h-4" /></button>
-                                <button onClick={() => item.id && handleDeleteRequest(item.id)} className="p-2 text-[#888] hover:text-[#C2410C] hover:bg-[#2A2A2A] rounded-md transition-all active:scale-95"><Trash2 className="w-4 h-4" /></button>
+                              <div className="flex gap-0.5 bg-[#14161C] rounded-lg p-0.5 z-10">
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); openEditForm(item); }} 
+                                  className="p-1.5 text-[#888] hover:text-[#D4AF37] hover:bg-[#2A2A2A] rounded-md transition-all active:scale-95 cursor-pointer" 
+                                  aria-label="Edit item"
+                                >
+                                  <Pencil className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                </button>
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); item.id && handleDeleteRequest(item.id); }} 
+                                  className="p-1.5 text-[#888] hover:text-[#C2410C] hover:bg-[#2A2A2A] rounded-md transition-all active:scale-95 cursor-pointer" 
+                                  aria-label="Delete item"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                </button>
                               </div>
                             </div>
-                            <h3 className="text-2xl font-serif text-[#E5E1DA] leading-tight mb-1">{item.brand}</h3>
-                            <div className="flex items-center gap-2 mt-1">
-                              {item.barcode && <p className="text-[10px] text-[#666] font-mono tracking-widest">SKU: {item.barcode}</p>}
-                              {item.price && <p className="text-[10px] text-[#22C55E] font-mono tracking-widest">${item.price.toFixed(2)}</p>}
+                            
+                            <h3 className="text-sm sm:text-lg font-serif text-[#E5E1DA] leading-tight font-bold italic line-clamp-1">{item.brand.toUpperCase()}</h3>
+                            <p className="text-[9px] sm:text-xs text-[#888] font-bold uppercase tracking-wider line-clamp-1 mt-0.5">{item.flavor}</p>
+                            
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5">
+                              {item.barcode && <p className="text-[8px] sm:text-[9px] text-[#555] font-mono tracking-wider truncate max-w-[80px]">UPC: {item.barcode}</p>}
+                              {item.price && <p className="text-[9px] sm:text-[10px] text-[#22C55E] font-mono tracking-wider font-bold">${item.price.toFixed(2)}</p>}
                             </div>
                           </div>
                           
-                          <div className="flex justify-between items-end mt-4">
-                            <div className="flex items-center bg-[#14161C] border border-[#2A2A2A] rounded-xl overflow-hidden shadow-inner">
+                          {/* Stepper Control */}
+                          <div className="flex flex-col gap-2 mt-1">
+                            <div className="flex items-center justify-between bg-[#14161C] border border-[#2A2A2A] rounded-xl overflow-hidden shadow-inner w-full z-10">
                               <button 
-                                onClick={() => item.id && changeQuantity(item.id, -1, item.quantity)}
-                                className="px-4 py-2 text-[#888] hover:text-[#D4AF37] hover:bg-[#1F2127] active:bg-[#2A2A2A] transition-all text-xl font-medium leading-none"
+                                onClick={(e) => { e.stopPropagation(); item.id && changeQuantity(item.id, -1, item.quantity); }}
+                                className="px-3 py-1.5 sm:px-4 sm:py-2 text-[#888] hover:text-[#D4AF37] hover:bg-[#1F2127] active:bg-[#2A2A2A] transition-all text-base sm:text-xl font-medium leading-none select-none h-full cursor-pointer"
                               >-</button>
-                              <span className="text-lg font-mono px-3 text-[#E5E1DA] min-w-[3rem] text-center">{item.quantity}</span>
+                              <span className="text-xs sm:text-base font-mono px-1.5 text-[#E5E1DA] font-semibold">{item.quantity}</span>
                               <button 
-                                onClick={() => item.id && changeQuantity(item.id, 1, item.quantity)}
-                                className="px-4 py-2 text-[#888] hover:text-[#D4AF37] hover:bg-[#1F2127] active:bg-[#2A2A2A] transition-all text-xl font-medium leading-none"
+                                onClick={(e) => { e.stopPropagation(); item.id && changeQuantity(item.id, 1, item.quantity); }}
+                                className="px-3 py-1.5 sm:px-4 sm:py-2 text-[#888] hover:text-[#D4AF37] hover:bg-[#1F2127] active:bg-[#2A2A2A] transition-all text-base sm:text-xl font-medium leading-none select-none h-full cursor-pointer"
                               >+</button>
                             </div>
                             
                             {item.quantity <= item.reorderThreshold && (
-                              <span className="text-[10px] px-2 py-1 bg-[#C2410C]/10 border border-[#C2410C]/30 rounded-md uppercase tracking-widest text-[#C2410C] flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-[#C2410C] animate-pulse"></span>
+                              <span className="text-[8px] sm:text-[9px] px-2 py-0.5 bg-[#C2410C]/10 border border-[#C2410C]/30 rounded-md uppercase tracking-wider font-bold text-[#C2410C] flex items-center justify-center gap-1 self-start">
+                                <span className="w-1 h-1 rounded-full bg-[#C2410C] animate-pulse"></span>
                                 Reorder
                               </span>
                             )}
@@ -269,7 +295,7 @@ export function InventorySection({ items, pendingBarcode, clearPendingBarcode }:
                   </div>
 
                   {/* View All / Show Less button */}
-                  {brandItems.length > 4 && filterBrand === 'all' && (
+                  {brandItems.length > 2 && filterBrand === 'all' && (
                     <div className="flex justify-center mt-5">
                       <button
                         onClick={() => toggleBrandExpand(brand)}
@@ -318,7 +344,7 @@ export function InventorySection({ items, pendingBarcode, clearPendingBarcode }:
                   lowStockItems.map(item => (
                     <div key={`low-${item.id}`} className="flex justify-between items-center text-sm p-2 bg-[#14161C] border border-[#2A2A2A] rounded-xl">
                       <div className="flex flex-col">
-                        <span className="text-[#E5E1DA] font-serif">{item.brand} <span className="text-[#888] text-xs font-sans">({item.flavor})</span></span>
+                        <span className="text-[#E5E1DA] font-serif">{item.brand.toUpperCase()} <span className="text-[#888] text-xs font-sans">({item.flavor})</span></span>
                         <span className="text-[#C2410C] font-mono text-[10px] mt-1">Stock: {item.quantity}/{item.reorderThreshold}</span>
                       </div>
                       <button 
@@ -358,7 +384,7 @@ export function InventorySection({ items, pendingBarcode, clearPendingBarcode }:
                   items.filter(i => !i.barcode).map(item => (
                     <div key={`noupc-${item.id}`} className="flex justify-between items-center text-sm p-2 bg-[#14161C] border border-[#2A2A2A] rounded-xl">
                       <div className="flex flex-col">
-                        <span className="text-[#E5E1DA] font-serif">{item.brand} <span className="text-[#888] text-xs font-sans">({item.flavor})</span></span>
+                        <span className="text-[#E5E1DA] font-serif">{item.brand.toUpperCase()} <span className="text-[#888] text-xs font-sans">({item.flavor})</span></span>
                         <span className="text-yellow-500 font-mono text-[10px] mt-1">MISSING UPC</span>
                       </div>
                       <button 

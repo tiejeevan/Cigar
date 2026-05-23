@@ -3,12 +3,14 @@
 import { useState, useEffect } from 'react';
 import { InventorySection } from '@/components/inventory-section';
 import { OrdersSection } from '@/components/orders-section';
+import { ItemDetailView } from '@/components/item-detail-view';
 import { Package, ShoppingBag, AlertCircle, Settings } from 'lucide-react';
 import { SettingsModal } from '@/components/settings-modal';
 import { db, useLiveQuery } from '@/lib/db';
 
 export default function Home() {
   const [currentView, setCurrentView] = useState<'inventory' | 'orders'>('inventory');
+  const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
   const [pendingBarcode, setPendingBarcode] = useState<string | null>(null);
   const [dbError, setDbError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -33,23 +35,25 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#0A0B0E]">
-      <div className="p-4 md:p-8 max-w-[1400px] mx-auto w-full flex flex-col pt-8 md:pt-12 flex-1">
+      <div className="p-3.5 sm:p-8 max-w-[1400px] mx-auto w-full flex flex-col pt-3 sm:pt-8 md:pt-12 pb-24 sm:pb-12 flex-1">
         
-        <header className="mb-10 flex justify-between items-center border-b border-[#2A2A2A] pb-8">
-          <div>
-            <h1 className="text-4xl md:text-5xl font-serif text-[#D4AF37] italic tracking-tight mb-2">Gaint Mart</h1>
-            <p className="text-[10px] uppercase tracking-[0.3em] text-[#888]">Unified Retail System</p>
-          </div>
-          <button
-            onClick={() => setShowSettings(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-[#14161C] border border-[#2A2A2A] hover:border-[#D4AF37]/50 rounded-xl text-gray-300 hover:text-white transition-all duration-300 font-semibold text-xs uppercase tracking-wider active:scale-95 shadow-md"
-          >
-            <Settings className="w-4 h-4 text-[#D4AF37]" />
-            <span>Settings</span>
-          </button>
-        </header>
+        {selectedItemId === null && (
+          <header className="mb-4 sm:mb-10 flex justify-between items-center border-b border-[#2A2A2A] pb-4 sm:pb-8">
+            <div>
+              <h1 className="text-4xl md:text-5xl font-serif text-[#D4AF37] italic tracking-tight mb-2">Gaint Mart</h1>
+              <p className="text-[10px] uppercase tracking-[0.3em] text-[#888]">Unified Retail System</p>
+            </div>
+            <button
+              onClick={() => setShowSettings(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-[#14161C] border border-[#2A2A2A] hover:border-[#D4AF37]/50 rounded-xl text-gray-300 hover:text-white transition-all duration-300 font-semibold text-xs uppercase tracking-wider active:scale-95 shadow-md cursor-pointer"
+            >
+              <Settings className="w-4 h-4 text-[#D4AF37]" />
+              <span>Settings</span>
+            </button>
+          </header>
+        )}
 
-        {dbError && (
+        {selectedItemId === null && dbError && (
           <div className="mb-10 border border-[#D4AF37]/30 bg-[#D4AF37]/5 rounded-2xl p-6 text-[#E5E1DA] shadow-xl relative overflow-hidden backdrop-blur-sm">
             <div className="absolute top-0 left-0 w-1 h-full bg-[#D4AF37]"></div>
             <div className="flex gap-4 items-start">
@@ -73,47 +77,81 @@ export default function Home() {
           </div>
         )}
 
-        {/* Unified Navigation Bar */}
-        <div className="flex bg-[#14161C] border border-[#2A2A2A] rounded-2xl p-2 mb-10 w-full max-w-md mx-auto shadow-md">
-          <button
-            onClick={() => setCurrentView('inventory')}
-            className={`flex-1 flex items-center justify-center gap-3 py-4 text-sm tracking-widest uppercase transition-all duration-300 rounded-xl font-semibold ${currentView === 'inventory' ? 'bg-[#2A2A2A] text-[#D4AF37] shadow-lg scale-[1.02]' : 'text-[#888] hover:text-[#E5E1DA] hover:bg-[#1A1C23]'}`}
-          >
-            <Package className="w-5 h-5" />
-            <span className="hidden sm:inline">Inventory</span>
-            <span className="sm:hidden">Inv</span>
-          </button>
-          
-          <button
-            onClick={() => setCurrentView('orders')}
-            className={`flex-1 flex items-center justify-center gap-3 py-4 text-sm tracking-widest uppercase transition-all duration-300 rounded-xl font-semibold ${currentView === 'orders' ? 'bg-[#2A2A2A] text-[#D4AF37] shadow-lg scale-[1.02]' : 'text-[#888] hover:text-[#E5E1DA] hover:bg-[#1A1C23]'}`}
-          >
-            <ShoppingBag className="w-5 h-5" />
-            <span className="hidden sm:inline">Purchasing</span>
-            <span className="sm:hidden">Order</span>
-          </button>
-        </div>
+        {/* Desktop Unified Navigation Bar */}
+        {selectedItemId === null && (
+          <div className="hidden sm:flex bg-[#14161C] border border-[#2A2A2A] rounded-2xl p-2 mb-10 w-full max-w-md mx-auto shadow-md">
+            <button
+              onClick={() => setCurrentView('inventory')}
+              className={`flex-1 flex items-center justify-center gap-3 py-4 text-sm tracking-widest uppercase transition-all duration-300 rounded-xl font-semibold cursor-pointer ${currentView === 'inventory' ? 'bg-[#2A2A2A] text-[#D4AF37] shadow-lg scale-[1.02]' : 'text-[#888] hover:text-[#E5E1DA] hover:bg-[#1A1C23]'}`}
+            >
+              <Package className="w-5 h-5" />
+              <span>Inventory</span>
+            </button>
+            
+            <button
+              onClick={() => setCurrentView('orders')}
+              className={`flex-1 flex items-center justify-center gap-3 py-4 text-sm tracking-widest uppercase transition-all duration-300 rounded-xl font-semibold cursor-pointer ${currentView === 'orders' ? 'bg-[#2A2A2A] text-[#D4AF37] shadow-lg scale-[1.02]' : 'text-[#888] hover:text-[#E5E1DA] hover:bg-[#1A1C23]'}`}
+            >
+              <ShoppingBag className="w-5 h-5" />
+              <span>Purchasing</span>
+            </button>
+          </div>
+        )}
+
+        {/* Mobile Fixed-Bottom Navigation Bar */}
+        {selectedItemId === null && (
+          <div className="flex sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0D0F13]/95 border-t border-[#2A2A2A] px-6 pt-3 pb-[calc(env(safe-area-inset-bottom)+12px)] backdrop-blur-md shadow-[0_-8px_30px_rgba(0,0,0,0.6)] justify-around items-center">
+            <button
+              onClick={() => setCurrentView('inventory')}
+              className={`flex-1 flex flex-col items-center justify-center gap-1 py-1.5 text-[9px] tracking-widest uppercase transition-all duration-300 rounded-xl font-bold cursor-pointer ${currentView === 'inventory' ? 'text-[#D4AF37]' : 'text-gray-400'}`}
+            >
+              <Package className={`w-5 h-5 transition-transform ${currentView === 'inventory' ? 'scale-110 text-[#D4AF37]' : 'text-gray-400'}`} />
+              <span>Inventory</span>
+            </button>
+            
+            <button
+              onClick={() => setCurrentView('orders')}
+              className={`flex-1 flex flex-col items-center justify-center gap-1 py-1.5 text-[9px] tracking-widest uppercase transition-all duration-300 rounded-xl font-bold cursor-pointer ${currentView === 'orders' ? 'text-[#D4AF37]' : 'text-gray-400'}`}
+            >
+              <ShoppingBag className={`w-5 h-5 transition-transform ${currentView === 'orders' ? 'scale-110 text-[#D4AF37]' : 'text-gray-400'}`} />
+              <span>Purchasing</span>
+            </button>
+          </div>
+        )}
 
         {/* Main Content Area */}
         <main className="flex-1">
-          {currentView === 'inventory' && (
-            <InventorySection 
-              items={items || []}
-              pendingBarcode={pendingBarcode}
-              clearPendingBarcode={() => setPendingBarcode(null)}
+          {selectedItemId !== null ? (
+            <ItemDetailView 
+              itemId={selectedItemId}
+              onClose={() => setSelectedItemId(null)}
+              onSelectItem={(id) => setSelectedItemId(id)}
             />
-          )}
-          {currentView === 'orders' && (
-            <OrdersSection 
-              orders={orders || []}
-              inventory={items || []}
-            />
+          ) : (
+            <>
+              {currentView === 'inventory' && (
+                <InventorySection 
+                  items={items || []}
+                  pendingBarcode={pendingBarcode}
+                  clearPendingBarcode={() => setPendingBarcode(null)}
+                  onSelectItem={(id) => setSelectedItemId(id)}
+                />
+              )}
+              {currentView === 'orders' && (
+                <OrdersSection 
+                  orders={orders || []}
+                  inventory={items || []}
+                />
+              )}
+            </>
           )}
         </main>
 
-        <footer className="mt-20 pt-8 border-t border-[#2A2A2A] text-center">
-           <p className="text-[9px] uppercase tracking-[0.4em] text-[#444]">Confidential & Proprietary</p>
-        </footer>
+        {selectedItemId === null && (
+          <footer className="mt-20 pt-8 border-t border-[#2A2A2A] text-center">
+             <p className="text-[9px] uppercase tracking-[0.4em] text-[#444]">Confidential & Proprietary</p>
+          </footer>
+        )}
       </div>
 
       {/* Settings Modal */}

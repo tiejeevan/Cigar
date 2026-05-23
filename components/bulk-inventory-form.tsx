@@ -300,7 +300,7 @@ export function BulkInventoryForm({ onClose }: BulkInventoryFormProps) {
 
       {/* Fixed bottom Submit for flavors */}
       {isBrandConfirmed && (
-        <div className="absolute bottom-0 left-0 right-0 bg-[#0A0A0A] border-t border-[#222] p-4 sm:p-6 pb-safe">
+        <div className="absolute bottom-0 left-0 right-0 bg-[#0A0A0A] border-t border-[#222] p-4 sm:p-6 pb-[calc(env(safe-area-inset-bottom)+16px)]">
           <div className="max-w-2xl mx-auto flex gap-3">
             <button
               onClick={onClose}
