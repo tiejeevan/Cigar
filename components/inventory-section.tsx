@@ -6,7 +6,7 @@ import { InventoryForm } from '@/components/inventory-form';
 import { BulkInventoryForm } from '@/components/bulk-inventory-form';
 import { BrandsOverviewModal } from '@/components/brands-overview-modal';
 import { OverviewChart } from '@/components/overview-chart';
-import { Plus, Package, AlertTriangle, Archive, Search, Filter, Pencil, Trash2, ArrowUpDown, AlertCircle, Layers, Tag } from 'lucide-react';
+import { Plus, Package, AlertTriangle, Archive, Search, Filter, Pencil, Trash2, ArrowUpDown, AlertCircle, Layers, Tag, ChevronDown, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { LazyItemImage } from './lazy-item-image';
 
@@ -27,9 +27,39 @@ export function InventorySection({ items, pendingBarcode, clearPendingBarcode, o
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [itemToDelete, setItemToDelete] = useState<number | null>(null);
   const [expandedBrands, setExpandedBrands] = useState<Record<string, boolean>>({});
+  const [collapsedBrands, setCollapsedBrands] = useState<Record<string, boolean>>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('smoke_os_collapsed_brands');
+        return stored ? JSON.parse(stored) : {};
+      } catch (err) {
+        console.error('Failed to load collapsed brands:', err);
+        return {};
+      }
+    }
+    return {};
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('smoke_os_collapsed_brands', JSON.stringify(collapsedBrands));
+      } catch (err) {
+        console.error('Failed to save collapsed brands:', err);
+      }
+    }
+  }, [collapsedBrands]);
 
   const toggleBrandExpand = (brand: string) => {
     setExpandedBrands(prev => ({
+      ...prev,
+      [brand]: !prev[brand]
+    }));
+  };
+
+  const toggleBrandCollapse = (brand: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCollapsedBrands(prev => ({
       ...prev,
       [brand]: !prev[brand]
     }));
@@ -203,11 +233,15 @@ export function InventorySection({ items, pendingBarcode, clearPendingBarcode, o
               const brandItems = itemsByBrand[brand];
               const isExpanded = expandedBrands[brand] || filterBrand !== 'all';
               const itemsToRender = isExpanded ? brandItems : brandItems.slice(0, 2);
+              const isCollapsed = !!collapsedBrands[brand];
 
               return (
-                <div key={brand} className="bg-[#0A0C0F]/45 border border-[#2A2A2A]/40 rounded-2xl p-3.5 sm:p-6 shadow-sm animate-in fade-in duration-300">
+                <div 
+                  key={brand} 
+                  className={`bg-[#0A0C0F]/45 border border-[#2A2A2A]/40 rounded-2xl p-3.5 sm:p-6 shadow-sm animate-in fade-in duration-300 transition-all ${isCollapsed ? 'pb-3.5 sm:pb-6' : ''}`}
+                >
                   {/* Brand Header */}
-                  <div className="flex justify-between items-center border-b border-[#2A2A2A] pb-2 sm:pb-3 mb-3.5 sm:mb-5">
+                  <div className={`flex justify-between items-center ${isCollapsed ? '' : 'border-b border-[#2A2A2A] pb-2 sm:pb-3 mb-3.5 sm:mb-5'}`}>
                     <div 
                       onClick={() => brandItems[0]?.id && onSelectItem(brandItems[0].id)}
                       className="flex items-center gap-3 cursor-pointer group/brand hover:opacity-85 active:scale-98 transition-all"
@@ -218,102 +252,118 @@ export function InventorySection({ items, pendingBarcode, clearPendingBarcode, o
                         {brandItems.length} {brandItems.length === 1 ? 'SKU' : 'SKUs'}
                       </span>
                     </div>
+
+                    <button
+                      onClick={(e) => toggleBrandCollapse(brand, e)}
+                      className="p-1.5 bg-[#14161C]/85 border border-[#2A2A2A] rounded-xl text-gray-400 hover:text-[#D4AF37] hover:border-[#D4AF37]/45 transition-all active:scale-95 cursor-pointer flex items-center justify-center shadow-md"
+                      title={isCollapsed ? "Expand brand section" : "Collapse brand section"}
+                    >
+                      {isCollapsed ? (
+                        <ChevronRight className="w-4 h-4 text-gray-400 hover:text-[#D4AF37] transition-transform duration-300" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-[#D4AF37] transition-transform duration-300" />
+                      )}
+                    </button>
                   </div>
 
-                  {/* Items Grid for this Brand */}
-                  <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                    {itemsToRender.map(item => (
-                      <div 
-                        key={item.id} 
-                        onClick={() => item.id && onSelectItem(item.id)}
-                        className="bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl p-3 sm:p-4.5 group hover:border-[#D4AF37]/50 transition-all cursor-pointer hover:bg-[#14161C]/25 flex flex-col gap-3 shadow-sm active:scale-[0.99] relative overflow-hidden"
-                      >
-                        {/* Image Container */}
-                        <div className="w-full h-28 sm:h-36 flex-shrink-0 bg-[#14161C] border border-[#2A2A2A] rounded-xl flex items-center justify-center overflow-hidden">
-                          <LazyItemImage itemId={item.id} updatedAt={item.updatedAt} alt={item.brand} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
-                        </div>
-                        
-                        {/* Info & Metadata */}
-                        <div className="flex-1 flex flex-col justify-between gap-2.5">
-                          <div>
-                            <div className="flex justify-between items-start gap-1 mb-1.5">
-                              <div className="flex flex-wrap items-center gap-1">
-                                <span className="text-[8px] bg-[#1F2127] border border-[#2A2A2A] px-1.5 py-0.5 rounded text-[#D4AF37] uppercase tracking-wider font-bold">{item.category || 'Cigarillos'}</span>
-                                <span className="text-[8px] bg-[#14161C] border border-[#2A2A2A] px-1.5 py-0.5 rounded text-[#888] uppercase tracking-wider font-bold">{item.packType || 'Single'}</span>
-                              </div>
-                              <div className="flex gap-0.5 bg-[#14161C] rounded-lg p-0.5 z-10">
-                                <button 
-                                  onClick={(e) => { e.stopPropagation(); openEditForm(item); }} 
-                                  className="p-1.5 text-[#888] hover:text-[#D4AF37] hover:bg-[#2A2A2A] rounded-md transition-all active:scale-95 cursor-pointer" 
-                                  aria-label="Edit item"
-                                >
-                                  <Pencil className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                </button>
-                                <button 
-                                  onClick={(e) => { e.stopPropagation(); item.id && handleDeleteRequest(item.id); }} 
-                                  className="p-1.5 text-[#888] hover:text-[#C2410C] hover:bg-[#2A2A2A] rounded-md transition-all active:scale-95 cursor-pointer" 
-                                  aria-label="Delete item"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                </button>
-                              </div>
+                  {!isCollapsed && (
+                    <>
+                      {/* Items Grid for this Brand */}
+                      <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                        {itemsToRender.map(item => (
+                          <div 
+                            key={item.id} 
+                            onClick={() => item.id && onSelectItem(item.id)}
+                            className="bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl p-3 sm:p-4.5 group hover:border-[#D4AF37]/50 transition-all cursor-pointer hover:bg-[#14161C]/25 flex flex-col gap-3 shadow-sm active:scale-[0.99] relative overflow-hidden"
+                          >
+                            {/* Image Container */}
+                            <div className="w-full h-28 sm:h-36 flex-shrink-0 bg-[#14161C] border border-[#2A2A2A] rounded-xl flex items-center justify-center overflow-hidden">
+                              <LazyItemImage itemId={item.id} updatedAt={item.updatedAt} alt={item.brand} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
                             </div>
                             
-                            <h3 className="text-sm sm:text-lg font-serif text-[#E5E1DA] leading-tight font-bold italic line-clamp-1">{item.brand.toUpperCase()}</h3>
-                            <p className="text-[9px] sm:text-xs text-[#888] font-bold uppercase tracking-wider line-clamp-1 mt-0.5">{item.flavor}</p>
-                            
-                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5">
-                              {item.barcode && <p className="text-[8px] sm:text-[9px] text-[#555] font-mono tracking-wider truncate max-w-[80px]">UPC: {item.barcode}</p>}
-                              {item.price && <p className="text-[9px] sm:text-[10px] text-[#22C55E] font-mono tracking-wider font-bold">${item.price.toFixed(2)}</p>}
+                            {/* Info & Metadata */}
+                            <div className="flex-1 flex flex-col justify-between gap-2.5">
+                              <div>
+                                <div className="flex justify-between items-start gap-1 mb-1.5">
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    <span className="text-[8px] bg-[#1F2127] border border-[#2A2A2A] px-1.5 py-0.5 rounded text-[#D4AF37] uppercase tracking-wider font-bold">{item.category || 'Cigarillos'}</span>
+                                    <span className="text-[8px] bg-[#14161C] border border-[#2A2A2A] px-1.5 py-0.5 rounded text-[#888] uppercase tracking-wider font-bold">{item.packType || 'Single'}</span>
+                                  </div>
+                                  <div className="flex gap-0.5 bg-[#14161C] rounded-lg p-0.5 z-10">
+                                    <button 
+                                      onClick={(e) => { e.stopPropagation(); openEditForm(item); }} 
+                                      className="p-1.5 text-[#888] hover:text-[#D4AF37] hover:bg-[#2A2A2A] rounded-md transition-all active:scale-95 cursor-pointer" 
+                                      aria-label="Edit item"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                    </button>
+                                    <button 
+                                      onClick={(e) => { e.stopPropagation(); item.id && handleDeleteRequest(item.id); }} 
+                                      className="p-1.5 text-[#888] hover:text-[#C2410C] hover:bg-[#2A2A2A] rounded-md transition-all active:scale-95 cursor-pointer" 
+                                      aria-label="Delete item"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                                
+                                <h3 className="text-sm sm:text-lg font-serif text-[#E5E1DA] leading-tight font-bold italic line-clamp-1">{item.brand.toUpperCase()}</h3>
+                                <p className="text-[9px] sm:text-xs text-[#888] font-bold uppercase tracking-wider line-clamp-1 mt-0.5">{item.flavor}</p>
+                                
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5">
+                                  {item.barcode && <p className="text-[8px] sm:text-[9px] text-[#555] font-mono tracking-wider truncate max-w-[80px]">UPC: {item.barcode}</p>}
+                                  {item.price && <p className="text-[9px] sm:text-[10px] text-[#22C55E] font-mono tracking-wider font-bold">${item.price.toFixed(2)}</p>}
+                                </div>
+                              </div>
+                              
+                              {/* Stepper Control */}
+                              <div className="flex flex-col gap-2 mt-1">
+                                <div className="flex items-center justify-between bg-[#14161C] border border-[#2A2A2A] rounded-xl overflow-hidden shadow-inner w-full z-10">
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); item.id && changeQuantity(item.id, -1, item.quantity); }}
+                                    className="px-3 py-1.5 sm:px-4 sm:py-2 text-[#888] hover:text-[#D4AF37] hover:bg-[#1F2127] active:bg-[#2A2A2A] transition-all text-base sm:text-xl font-medium leading-none select-none h-full cursor-pointer"
+                                  >-</button>
+                                  <span className="text-xs sm:text-base font-mono px-1.5 text-[#E5E1DA] font-semibold">{item.quantity}</span>
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); item.id && changeQuantity(item.id, 1, item.quantity); }}
+                                    className="px-3 py-1.5 sm:px-4 sm:py-2 text-[#888] hover:text-[#D4AF37] hover:bg-[#1F2127] active:bg-[#2A2A2A] transition-all text-base sm:text-xl font-medium leading-none select-none h-full cursor-pointer"
+                                  >+</button>
+                                </div>
+                                
+                                {item.quantity <= item.reorderThreshold && (
+                                  <span className="text-[8px] sm:text-[9px] px-2 py-0.5 bg-[#C2410C]/10 border border-[#C2410C]/30 rounded-md uppercase tracking-wider font-bold text-[#C2410C] flex items-center justify-center gap-1 self-start">
+                                    <span className="w-1 h-1 rounded-full bg-[#C2410C] animate-pulse"></span>
+                                    Reorder
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
-                          
-                          {/* Stepper Control */}
-                          <div className="flex flex-col gap-2 mt-1">
-                            <div className="flex items-center justify-between bg-[#14161C] border border-[#2A2A2A] rounded-xl overflow-hidden shadow-inner w-full z-10">
-                              <button 
-                                onClick={(e) => { e.stopPropagation(); item.id && changeQuantity(item.id, -1, item.quantity); }}
-                                className="px-3 py-1.5 sm:px-4 sm:py-2 text-[#888] hover:text-[#D4AF37] hover:bg-[#1F2127] active:bg-[#2A2A2A] transition-all text-base sm:text-xl font-medium leading-none select-none h-full cursor-pointer"
-                              >-</button>
-                              <span className="text-xs sm:text-base font-mono px-1.5 text-[#E5E1DA] font-semibold">{item.quantity}</span>
-                              <button 
-                                onClick={(e) => { e.stopPropagation(); item.id && changeQuantity(item.id, 1, item.quantity); }}
-                                className="px-3 py-1.5 sm:px-4 sm:py-2 text-[#888] hover:text-[#D4AF37] hover:bg-[#1F2127] active:bg-[#2A2A2A] transition-all text-base sm:text-xl font-medium leading-none select-none h-full cursor-pointer"
-                              >+</button>
-                            </div>
-                            
-                            {item.quantity <= item.reorderThreshold && (
-                              <span className="text-[8px] sm:text-[9px] px-2 py-0.5 bg-[#C2410C]/10 border border-[#C2410C]/30 rounded-md uppercase tracking-wider font-bold text-[#C2410C] flex items-center justify-center gap-1 self-start">
-                                <span className="w-1 h-1 rounded-full bg-[#C2410C] animate-pulse"></span>
-                                Reorder
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
 
-                  {/* View All / Show Less button */}
-                  {brandItems.length > 2 && filterBrand === 'all' && (
-                    <div className="flex justify-center mt-5">
-                      <button
-                        onClick={() => toggleBrandExpand(brand)}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-[#14161C] border border-[#2A2A2A] hover:border-[#D4AF37]/50 hover:bg-[#1A1C23] text-xs text-gray-300 hover:text-white rounded-xl transition-all duration-300 active:scale-95 font-semibold font-mono tracking-wider shadow-sm cursor-pointer"
-                      >
-                        {isExpanded ? (
-                          <>
-                            <span>Show Less</span>
-                            <span className="text-[9px] text-[#D4AF37]">▲</span>
-                          </>
-                        ) : (
-                          <>
-                            <span>View All ({brandItems.length} items)</span>
-                            <span className="text-[9px] text-[#D4AF37]">▼</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
+                      {/* View All / Show Less button */}
+                      {brandItems.length > 2 && filterBrand === 'all' && (
+                        <div className="flex justify-center mt-5">
+                          <button
+                            onClick={() => toggleBrandExpand(brand)}
+                            className="flex items-center gap-2 px-5 py-2.5 bg-[#14161C] border border-[#2A2A2A] hover:border-[#D4AF37]/50 hover:bg-[#1A1C23] text-xs text-gray-300 hover:text-white rounded-xl transition-all duration-300 active:scale-95 font-semibold font-mono tracking-wider shadow-sm cursor-pointer"
+                          >
+                            {isExpanded ? (
+                              <>
+                                <span>Show Less</span>
+                                <span className="text-[9px] text-[#D4AF37]">▲</span>
+                              </>
+                            ) : (
+                              <>
+                                <span>View All ({brandItems.length} items)</span>
+                                <span className="text-[9px] text-[#D4AF37]">▼</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               );
