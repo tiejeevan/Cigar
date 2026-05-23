@@ -40,7 +40,7 @@ export default function Home() {
         {selectedItemId === null && (
           <header className="mb-4 sm:mb-10 flex justify-between items-center border-b border-[#2A2A2A] pb-4 sm:pb-8">
             <div>
-              <h1 className="text-4xl md:text-5xl font-serif text-[#D4AF37] italic tracking-tight mb-2">Gaint Mart</h1>
+              <h1 className="text-4xl md:text-5xl font-serif text-[#D4AF37] italic tracking-tight mb-2">Gaint Martt</h1>
               <p className="text-[10px] uppercase tracking-[0.3em] text-[#888]">Unified Retail System</p>
             </div>
             <button
@@ -61,7 +61,7 @@ export default function Home() {
               <div>
                 <h3 className="font-serif text-lg font-bold text-[#D4AF37] mb-2">Neon Serverless DB Connection Required</h3>
                 <p className="text-sm opacity-90 leading-relaxed mb-4">
-                  Gaint Mart is fully configured with a serverless Postgres integration! To make your inventory, pricing, registers, and purchasing records permanent and consistent across all devices and tablets, please configure your Neon connection:
+                  Gaint Martt is fully configured with a serverless Postgres integration! To make your inventory, pricing, registers, and purchasing records permanent and consistent across all devices and tablets, please configure your Neon connection:
                 </p>
                 <ol className="list-decimal pl-5 text-sm opacity-80 space-y-2 mb-4">
                   <li>Retrieve your <strong>Postgres connection string</strong> from your <a href="https://neon.tech" target="_blank" className="text-[#D4AF37] underline font-semibold">Neon Console</a> dashboard.</li>
