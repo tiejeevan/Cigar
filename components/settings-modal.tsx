@@ -4,10 +4,11 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Settings, Download, Upload, AlertCircle, RefreshCw, 
-  FileText, Check, Database, HelpCircle, Trash2, GitMerge 
+  FileText, Check, Database, HelpCircle, Trash2, GitMerge, Wand2
 } from 'lucide-react';
 import { db } from '@/lib/db';
 import { toast } from 'sonner';
+import { StockWizardModal } from '@/components/stock-wizard-modal';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -23,6 +24,7 @@ export function SettingsModal({ onClose, activeItemsCount, activeOrdersCount }: 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [parsedData, setParsedData] = useState<any | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [showWizard, setShowWizard] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -240,6 +242,24 @@ export function SettingsModal({ onClose, activeItemsCount, activeOrdersCount }: 
               <p className="text-[9px] uppercase tracking-widest text-[#888] font-bold">Orders</p>
             </div>
           </div>
+        </div>
+
+        {/* Stock Wizard Engine (Interactive) */}
+        <div className="bg-gradient-to-br from-[#1A1D24] to-[#111216] border border-[#2A2A2A] hover:border-[#D4AF37]/50 transition-colors rounded-3xl p-6 shadow-sm flex flex-col sm:flex-row items-center gap-6 text-left group">
+          <div className="flex-1">
+            <h4 className="text-lg font-serif italic text-[#D4AF37] mb-1 flex items-center gap-2">
+              <Wand2 className="w-5 h-5 text-[#D4AF37]" /> Stock Wizard Engine
+            </h4>
+            <p className="text-xs text-gray-400 leading-relaxed max-w-md">
+              Launch the interactive stock taking flow. This wizard will guide you through every item in your store brand-by-brand to update stock levels, flag moving items, and ask performance questions.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowWizard(true)}
+            className="flex justify-center items-center gap-2 bg-[#D4AF37] hover:bg-[#C4A030] text-black px-6 py-4 rounded-2xl font-bold uppercase tracking-[0.1em] active:scale-95 transition-all text-sm shadow-lg w-full sm:w-auto flex-shrink-0"
+          >
+            Launch Wizard
+          </button>
         </div>
 
 
@@ -502,6 +522,10 @@ export function SettingsModal({ onClose, activeItemsCount, activeOrdersCount }: 
         </div>
 
       </div>
+
+      {showWizard && (
+        <StockWizardModal onClose={() => setShowWizard(false)} />
+      )}
     </div>
   );
 }

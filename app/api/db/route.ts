@@ -24,12 +24,32 @@ async function ensureTables(sql: any) {
       "packType" TEXT NOT NULL,
       quantity INTEGER NOT NULL DEFAULT 0,
       "reorderThreshold" INTEGER NOT NULL DEFAULT 10,
+      "boxSize" INTEGER NOT NULL DEFAULT 15,
       image TEXT,
       barcode TEXT,
       price NUMERIC(10, 2) DEFAULT 0.00,
+      flag TEXT,
       "updatedAt" BIGINT NOT NULL
     )
   `;
+
+  // Dynamically add boxSize and flag if missing
+  try {
+    const colsResult = await sql`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name='items' AND column_name IN ('boxSize', 'flag')
+    `;
+    const cols = colsResult.map((r: any) => r.column_name);
+    if (!cols.includes('boxSize')) {
+      await sql`ALTER TABLE items ADD COLUMN "boxSize" INTEGER NOT NULL DEFAULT 15`;
+    }
+    if (!cols.includes('flag')) {
+      await sql`ALTER TABLE items ADD COLUMN flag TEXT`;
+    }
+  } catch (err) {
+    console.error('Error adding columns:', err);
+  }
 
   // Schema for orders table
   await sql`
@@ -59,6 +79,9 @@ function mapDbResult(row: any) {
   }
   if ('reorderThreshold' in mapped) {
     mapped.reorderThreshold = parseInt(mapped.reorderThreshold, 10);
+  }
+  if ('boxSize' in mapped) {
+    mapped.boxSize = parseInt(mapped.boxSize, 10);
   }
   if ('updatedAt' in mapped) {
     mapped.updatedAt = Number(mapped.updatedAt);
@@ -99,7 +122,7 @@ export async function POST(req: NextRequest) {
     // 1. Fetch all items (excluding image to optimize payload)
     if (action === 'getItems') {
       const rows = await sql`
-        SELECT id, category, brand, flavor, "packType", quantity, "reorderThreshold", barcode, price, "updatedAt"
+        SELECT id, category, brand, flavor, "packType", quantity, "reorderThreshold", "boxSize", barcode, price, flag, "updatedAt"
         FROM items
         ORDER BY id DESC
       `;
@@ -115,7 +138,7 @@ export async function POST(req: NextRequest) {
     // 3. Find unique item by barcode (excluding image)
     if (action === 'getItemByBarcode') {
       const rows = await sql`
-        SELECT id, category, brand, flavor, "packType", quantity, "reorderThreshold", barcode, price, "updatedAt"
+        SELECT id, category, brand, flavor, "packType", quantity, "reorderThreshold", "boxSize", barcode, price, flag, "updatedAt"
         FROM items
         WHERE barcode = ${barcode}
         LIMIT 1
@@ -141,7 +164,7 @@ export async function POST(req: NextRequest) {
     // 4. Create new inventory item
     if (action === 'addItem') {
       const rows = await sql`
-        INSERT INTO items (category, brand, flavor, "packType", quantity, "reorderThreshold", image, barcode, price, "updatedAt")
+        INSERT INTO items (category, brand, flavor, "packType", quantity, "reorderThreshold", "boxSize", image, barcode, price, flag, "updatedAt")
         VALUES (
           ${item.category || 'Cigarillos'}, 
           ${item.brand}, 
@@ -149,9 +172,11 @@ export async function POST(req: NextRequest) {
           ${item.packType || 'Single'}, 
           ${parseInt(item.quantity, 10) || 0}, 
           ${parseInt(item.reorderThreshold, 10) || 10}, 
+          ${parseInt(item.boxSize, 10) || 15},
           ${item.image || null}, 
           ${item.barcode || null}, 
           ${parseFloat(item.price) || 0.00}, 
+          ${item.flag || null},
           ${Date.now()}
         )
         RETURNING *
@@ -196,9 +221,11 @@ export async function POST(req: NextRequest) {
       const packType = updates.packType !== undefined ? updates.packType : existing.packType;
       const quantity = updates.quantity !== undefined ? parseInt(updates.quantity, 10) : parseInt(existing.quantity, 10);
       const reorderThreshold = updates.reorderThreshold !== undefined ? parseInt(updates.reorderThreshold, 10) : parseInt(existing.reorderThreshold, 10);
+      const boxSize = updates.boxSize !== undefined ? parseInt(updates.boxSize, 10) : parseInt(existing.boxSize || 15, 10);
       const image = updates.image !== undefined ? updates.image : existing.image;
       const barcode = updates.barcode !== undefined ? updates.barcode : existing.barcode;
       const price = updates.price !== undefined ? parseFloat(updates.price) : parseFloat(existing.price);
+      const flag = updates.flag !== undefined ? updates.flag : existing.flag;
       const updatedAt = Date.now();
 
       const updateRows = await sql`
@@ -210,9 +237,11 @@ export async function POST(req: NextRequest) {
           "packType" = ${packType}, 
           quantity = ${quantity}, 
           "reorderThreshold" = ${reorderThreshold}, 
+          "boxSize" = ${boxSize},
           image = ${image}, 
           barcode = ${barcode}, 
           price = ${price}, 
+          flag = ${flag},
           "updatedAt" = ${updatedAt}
         WHERE id = ${id}
         RETURNING *
@@ -294,6 +323,7 @@ export async function POST(req: NextRequest) {
           if (conflictStrategy === 'overwrite') {
             const quantity = parseInt(incoming.quantity, 10) || 0;
             const reorderThreshold = parseInt(incoming.reorderThreshold, 10) || 10;
+            const boxSize = parseInt(incoming.boxSize, 10) || parseInt(existing.boxSize, 10) || 15;
             const price = parseFloat(incoming.price) || 0.00;
             await sql`
               UPDATE items 
@@ -304,8 +334,10 @@ export async function POST(req: NextRequest) {
                 "packType" = ${incoming.packType || existing.packType}, 
                 quantity = ${quantity}, 
                 "reorderThreshold" = ${reorderThreshold}, 
+                "boxSize" = ${boxSize},
                 image = ${incoming.image !== undefined ? incoming.image : existing.image}, 
                 price = ${price}, 
+                flag = ${incoming.flag !== undefined ? incoming.flag : existing.flag},
                 "updatedAt" = ${Date.now()}
               WHERE id = ${existing.id}
             `;
@@ -326,9 +358,10 @@ export async function POST(req: NextRequest) {
         } else {
           const quantity = parseInt(incoming.quantity, 10) || 0;
           const reorderThreshold = parseInt(incoming.reorderThreshold, 10) || 10;
+          const boxSize = parseInt(incoming.boxSize, 10) || 15;
           const price = parseFloat(incoming.price) || 0.00;
           await sql`
-            INSERT INTO items (category, brand, flavor, "packType", quantity, "reorderThreshold", image, barcode, price, "updatedAt")
+            INSERT INTO items (category, brand, flavor, "packType", quantity, "reorderThreshold", "boxSize", image, barcode, price, flag, "updatedAt")
             VALUES (
               ${incoming.category || 'Cigarillos'}, 
               ${incoming.brand}, 
@@ -336,9 +369,11 @@ export async function POST(req: NextRequest) {
               ${incoming.packType || 'Single'}, 
               ${quantity}, 
               ${reorderThreshold}, 
+              ${boxSize},
               ${incoming.image || null}, 
               ${incoming.barcode || null}, 
               ${price}, 
+              ${incoming.flag || null},
               ${Date.now()}
             )
           `;

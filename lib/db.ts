@@ -28,9 +28,11 @@ export interface InventoryItem {
   packType: string;
   quantity: number;
   reorderThreshold: number;
+  boxSize?: number;
   image?: string;
   barcode?: string;
   price?: number;
+  flag?: string | null;
   updatedAt: number;
 }
 
