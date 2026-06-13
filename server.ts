@@ -38,11 +38,12 @@ app.prepare().then(() => {
   wss.on('connection', (ws) => {
     // console.log('WebSocket Client connected');
     
-    ws.on('message', (message) => {
+    ws.on('message', (message, isBinary) => {
       // Broadcast the message to all OTHER clients
       wss.clients.forEach((client) => {
         if (client !== ws && client.readyState === WebSocket.OPEN) {
-          client.send(message);
+          // ensure we pass `binary: isBinary` so text messages stay text
+          client.send(message, { binary: isBinary });
         }
       });
     });
