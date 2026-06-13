@@ -27,3 +27,76 @@ input, textarea, [contenteditable="true"] {
   -ms-user-select: text;
   user-select: text;
 }
+
+/* ============ Futuristic Add Item Modal ============ */
+
+@keyframes modal-slide-up {
+  0% {
+    opacity: 0;
+    transform: translateY(40px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes modal-backdrop-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(212, 175, 55, 0.15), 0 0 30px rgba(212, 175, 55, 0.05);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(212, 175, 55, 0.3), 0 0 50px rgba(212, 175, 55, 0.1);
+  }
+}
+
+@keyframes border-scan {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.add-item-modal-backdrop {
+  animation: modal-backdrop-in 0.25s ease-out forwards;
+}
+
+.add-item-modal {
+  animation: modal-slide-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-fill-mode: both;
+}
+
+.add-item-modal-glow {
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+
+.add-item-btn-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.add-item-btn-shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+  animation: shimmer 3s ease-in-out infinite;
+}
+
+.gradient-border-scan {
+  background: linear-gradient(90deg, #D4AF37, #B3932E, #E5C25A, #D4AF37);
+  background-size: 300% 100%;
+  animation: border-scan 4s ease-in-out infinite;
+}

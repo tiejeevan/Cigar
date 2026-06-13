@@ -233,6 +233,7 @@ export function OrderBookSection({
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [activeTab, setActiveTab] = useState<'orders' | 'history'>('orders');
+  const [showAddItemModal, setShowAddItemModal] = useState(false);
 
   // Active items selection for shopping completion
   const [selectedItemIds, setSelectedItemIds] = useState<Record<number, boolean>>({});
@@ -889,12 +890,7 @@ export function OrderBookSection({
   }
 
   return (
-    <div className="flex flex-col gap-6 w-full max-w-[1400px] mx-auto text-left">
-
-      <div className="flex flex-col lg:flex-row gap-8 w-full">
-
-        {/* Collaborative Needs Board */}
-        <div className="flex-1 flex flex-col gap-6">
+    <div className="flex flex-col gap-6 w-full max-w-3xl mx-auto text-left">
 
           {/* Tab Switcher */}
           <div className="flex border-b border-[#2A2A2A] pb-1 gap-6 mb-2">
@@ -922,6 +918,16 @@ export function OrderBookSection({
             </button>
           </div>
 
+          {/* ===== ADD ITEM BUTTON ===== */}
+          <div className="flex justify-center w-full">
+            <button
+              onClick={() => setShowAddItemModal(true)}
+              className="add-item-btn-shimmer w-[80%] py-3.5 bg-gradient-to-r from-[#D4AF37] via-[#E5C25A] to-[#D4AF37] text-black rounded-2xl font-bold uppercase tracking-[0.2em] text-sm shadow-lg shadow-[#D4AF37]/20 hover:shadow-[#D4AF37]/40 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 cursor-pointer flex items-center justify-center gap-2.5"
+            >
+              <Plus className="w-5 h-5" />
+              Add Item
+            </button>
+          </div>
 
           {/* Active Filters Calculations */}
           {(() => {
@@ -1164,313 +1170,214 @@ export function OrderBookSection({
           ) : (
             <OrderHistorySection searchQuery={searchQuery} onViewDetails={openOrderDetailModal} />
           )}
-        </div>
 
-        {/* Right Sidebar panel */}
-        <div className="w-full lg:w-96 flex flex-col gap-6 animate-in fade-in slide-in-from-right-3 duration-300 shrink-0">
+      {/* ============== FUTURISTIC ADD ITEM MODAL ============== */}
+      {showAddItemModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-md add-item-modal-backdrop"
+          onClick={() => setShowAddItemModal(false)}
+        >
+          <div
+            className="add-item-modal add-item-modal-glow bg-[#0A0C10]/95 border border-[#D4AF37]/30 rounded-t-[2rem] sm:rounded-3xl w-full sm:w-[95%] sm:max-w-lg max-h-[92vh] overflow-y-auto shadow-2xl relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Animated top accent border */}
+            <div className="gradient-border-scan h-[2px] w-full rounded-t-[2rem] sm:rounded-t-3xl" />
 
-          {/* Add New Need Panel */}
-          <div className="bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl p-6 shadow-md text-left relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#D4AF37] to-[#B3932E]" />
+            {/* Close button */}
+            <button
+              onClick={() => setShowAddItemModal(false)}
+              className="absolute top-4 right-4 z-10 w-9 h-9 rounded-full bg-[#14161C]/80 border border-[#2A2A2A] hover:border-[#D4AF37]/50 text-gray-400 hover:text-white flex items-center justify-center transition-all cursor-pointer hover:rotate-90 duration-300"
+              aria-label="Close add item modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
 
-            <h3 className="text-lg font-serif text-[#D4AF37] mb-2 flex items-center gap-2">
-              <Plus className="w-5 h-5" />
-              Request Need
-            </h3>
-            <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-6">Write what the store requires (All Optional)</p>
-
-            {/* Real-time Custom Request Preview Card */}
-            <div className="mb-6 p-4 rounded-xl border border-dashed border-[#2A2A2A] bg-[#14161C]/30 relative overflow-hidden">
-              <div className="absolute top-2.5 right-3 flex items-center gap-1.5 text-[8px] uppercase tracking-wider text-gray-500 font-bold bg-[#14161C] px-2 py-0.5 rounded border border-[#2A2A2A]/50">
-                <Eye className="w-3.5 h-3.5 text-[#D4AF37]" /> Live Preview
+            <div className="px-5 sm:px-7 pt-6 pb-8">
+              {/* Header */}
+              <div className="flex items-center gap-3 mb-1">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#D4AF37]/20 to-[#D4AF37]/5 border border-[#D4AF37]/30 flex items-center justify-center">
+                  <Plus className="w-5 h-5 text-[#D4AF37]" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-serif text-[#E5E1DA] font-bold tracking-wide">Add New Item</h3>
+                  <p className="text-[9px] uppercase tracking-[0.25em] text-gray-500 font-bold">Store Request</p>
+                </div>
               </div>
-              <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-3 font-semibold">Dashboard Card Mockup:</p>
 
-              <div className="bg-[#0D0F13]/90 border border-[#2A2A2A]/80 rounded-xl p-4 flex flex-col gap-3 shadow-inner">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5 mb-2">
-                      <span className={`text-[8px] border px-1.5 py-0.2 rounded font-semibold uppercase tracking-wider transition-colors ${getCategoryBadgeStyles(newCategory)}`}>
-                        {newCategory.trim() || 'Store Supplies'}
-                      </span>
-                      <span className="text-[9px] bg-[#14161C] border border-[#2A2A2A] px-1.5 py-0.2 rounded text-zinc-400 font-medium uppercase tracking-wider transition-all">
-                        {newPackType.trim() || 'Item'}
-                      </span>
-                      <span className={`text-[8px] border px-1.5 py-0.2 rounded font-bold uppercase tracking-wider ${newUrgency === 'high' ? 'bg-red-500/10 border-red-500/20 text-red-400' :
-                        newUrgency === 'medium' ? 'bg-orange-500/10 border-orange-500/20 text-orange-400' :
-                          'bg-blue-500/10 border-blue-500/20 text-blue-400'
-                        }`}>
-                        {newUrgency}
-                      </span>
-                    </div>
+              {/* Decorative line */}
+              <div className="mt-4 mb-5 h-px bg-gradient-to-r from-transparent via-[#D4AF37]/30 to-transparent" />
 
-                    <h4 className="text-sm font-serif text-[#E5E1DA] uppercase flex items-center gap-1.5 flex-wrap font-bold">
-                      {getCategoryIcon(newCategory)}
-                      <span className="truncate max-w-[140px] block">
-                        {newBrand.trim() || 'Description Required'}
-                      </span>
-                      {newFlavor.trim() && (
-                        <span className="text-[#888] font-sans text-xs lowercase italic font-normal shrink-0">
-                          ({newFlavor.trim()})
-                        </span>
-                      )}
-                    </h4>
+              <form onSubmit={(e) => { handleCreateNeed(e); setShowAddItemModal(false); }} className="space-y-4">
+                {/* 1. Description */}
+                <div className="space-y-2 relative">
+                  <div className="flex justify-between items-center">
+                    <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Description / Item Name</label>
+                    <span className="text-[9px] uppercase tracking-wider text-[#C2410C] font-bold animate-pulse">Required</span>
                   </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <div className="flex items-center gap-1 bg-[#14161C] px-2 py-0.5 rounded border border-[#2A2A2A]/40 text-[9px] text-[#888]">
-                      <span>Cycle:</span>
-                      <span className="font-bold text-[#E5E1DA]">{newTimeframe.toUpperCase()}</span>
+                  <input
+                    type="text"
+                    value={newBrand}
+                    onChange={(e) => setNewBrand(e.target.value)}
+                    onFocus={() => setShowSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                    className="w-full bg-[#14161C] border border-[#2A2A2A] focus:border-[#D4AF37] text-[#E5E1DA] p-3.5 text-sm rounded-xl placeholder:text-gray-600 font-medium shadow-inner transition-all focus:outline-none focus:shadow-[0_0_0_3px_rgba(212,175,55,0.1)]"
+                    placeholder="e.g. 10 Bags of Ice, Swisher Sweets..."
+                    autoComplete="off"
+                    autoFocus
+                  />
+                  {/* Autocomplete Suggestions */}
+                  {showSuggestions && matchingSuggestions.length > 0 && (
+                    <div className="absolute left-0 right-0 mt-1 bg-[#14161C] border border-[#2A2A2A] rounded-xl overflow-hidden z-20 shadow-xl max-h-48 overflow-y-auto">
+                      {matchingSuggestions.slice(0, 8).map(suggestion => (
+                        <button
+                          key={suggestion}
+                          type="button"
+                          onClick={() => handleSelectSuggestion(suggestion)}
+                          className="w-full text-left p-2.5 text-[#E5E1DA] hover:bg-[#2A2A2A] transition-colors text-[11px] font-semibold uppercase tracking-wider flex items-center gap-2 border-b border-[#2A2A2A]/50 last:border-b-0 cursor-pointer"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]"></span>
+                          {suggestion}
+                        </button>
+                      ))}
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0 bg-[#14161C] px-2 py-1 rounded-lg border border-[#2A2A2A]/40">
-                      <span className="text-[8px] uppercase tracking-wider text-gray-500 font-semibold font-sans">Qty:</span>
-                      <span className="text-xs font-mono text-[#E5E1DA] font-bold">{newQty || 1}</span>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
-
-
-                {newNotes.trim() && (
-                  <div className="text-[9px] text-[#888] bg-[#14161C]/50 border border-[#2A2A2A]/20 p-2 rounded italic text-left">
-                    Notes: {newNotes}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <form onSubmit={handleCreateNeed} className="space-y-4">
-              {/* 1. Description */}
-              <div className="space-y-2 relative">
-                <div className="flex justify-between items-center">
-                  <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Description / Item Name</label>
-                  <span className="text-[9px] uppercase tracking-wider text-[#C2410C] font-bold animate-pulse">Required</span>
+                {/* 2. Variant / Flavor / Size */}
+                <div className="space-y-2">
+                  <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Variant / Flavor / Size</label>
+                  <input
+                    type="text"
+                    value={newFlavor}
+                    onChange={(e) => setNewFlavor(e.target.value)}
+                    className="w-full bg-[#14161C] border border-[#2A2A2A] focus:border-[#D4AF37] text-[#E5E1DA] p-3.5 text-sm rounded-xl placeholder:text-gray-600 font-medium shadow-inner transition-all focus:outline-none focus:shadow-[0_0_0_3px_rgba(212,175,55,0.1)]"
+                    placeholder="e.g. 7 lb bag, Grape, 10-pack..."
+                  />
                 </div>
-                <input
-                  type="text"
-                  value={newBrand}
-                  onChange={(e) => setNewBrand(e.target.value)}
-                  onFocus={() => setShowSuggestions(true)}
-                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                  className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl placeholder:text-gray-600 font-medium shadow-inner"
-                  placeholder="e.g. 10 Bags of Ice, Swisher Sweets..."
-                  autoComplete="off"
-                />
 
-                {/* Autocomplete Suggestions */}
-                {showSuggestions && matchingSuggestions.length > 0 && (
-                  <div className="absolute left-0 right-0 mt-1 bg-[#14161C] border border-[#2A2A2A] rounded-xl overflow-hidden z-20 shadow-xl max-h-48 overflow-y-auto">
-                    {matchingSuggestions.slice(0, 8).map(suggestion => (
+                {/* 3. Category */}
+                <div className="space-y-2">
+                  <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Category</label>
+                  <input
+                    type="text"
+                    value={newCategory}
+                    onChange={(e) => setNewCategory(e.target.value)}
+                    className="w-full bg-[#14161C] border border-[#2A2A2A] focus:border-[#D4AF37] text-[#E5E1DA] p-3.5 text-sm rounded-xl placeholder:text-gray-600 font-medium shadow-inner transition-all focus:outline-none focus:shadow-[0_0_0_3px_rgba(212,175,55,0.1)]"
+                    placeholder="e.g. Supplies, Cigarillos, Snacks..."
+                  />
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {['Supplies', 'Cigarillos', 'Drinks', 'Snacks'].map(cat => (
                       <button
-                        key={suggestion}
+                        key={cat}
                         type="button"
-                        onClick={() => handleSelectSuggestion(suggestion)}
-                        className="w-full text-left p-2.5 text-[#E5E1DA] hover:bg-[#2A2A2A] transition-colors text-[11px] font-semibold uppercase tracking-wider flex items-center gap-2 border-b border-[#2A2A2A]/50 last:border-b-0 cursor-pointer"
+                        onClick={() => setNewCategory(cat)}
+                        className={`text-[10px] px-2.5 py-1 rounded-lg border font-bold uppercase tracking-wider transition-all cursor-pointer ${newCategory === cat ? 'bg-[#D4AF37]/15 border-[#D4AF37]/40 text-[#D4AF37]' : 'bg-[#1C1E24] border-[#2A2A2A]/60 text-gray-400 hover:text-white hover:bg-[#2A2D35]'}`}
                       >
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]"></span>
-                        {suggestion}
+                        {cat}
                       </button>
                     ))}
                   </div>
-                )}
-              </div>
-
-              {/* 2. Variant / Details */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Variant / Flavor / Size</label>
-                  <span className="text-[9px] uppercase tracking-wider text-gray-500 font-semibold italic">Optional</span>
                 </div>
-                <input
-                  type="text"
-                  value={newFlavor}
-                  onChange={(e) => setNewFlavor(e.target.value)}
-                  className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl placeholder:text-gray-600 font-medium shadow-inner"
-                  placeholder="e.g. 7 lb bag, Grape, 10-pack..."
-                />
-              </div>
 
-              {/* 3. Category */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Category / Department</label>
-                  <span className="text-[9px] uppercase tracking-wider text-gray-500 font-semibold italic">Optional</span>
-                </div>
-                <input
-                  type="text"
-                  value={newCategory}
-                  onChange={(e) => setNewCategory(e.target.value)}
-                  className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl placeholder:text-gray-600 font-medium shadow-inner"
-                  placeholder="e.g. Supplies, Cigarillos, Snacks..."
-                />
-                <div className="flex flex-wrap gap-1.5 mt-1.5">
-                  {['Supplies', 'Cigarillos', 'Drinks', 'Snacks'].map(cat => (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => setNewCategory(cat)}
-                      className="text-[9px] bg-[#1C1E24] hover:bg-[#2A2D35] text-gray-400 hover:text-white px-2 py-0.5 rounded-md border border-[#2A2A2A]/60 transition-colors cursor-pointer"
-                    >
-                      + {cat}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 4. Format / Packaging */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
+                {/* 4. Packaging */}
+                <div className="space-y-2">
                   <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Format / Packaging</label>
-                  <span className="text-[9px] uppercase tracking-wider text-gray-500 font-semibold italic">Optional</span>
-                </div>
-                <input
-                  type="text"
-                  value={newPackType}
-                  onChange={(e) => setNewPackType(e.target.value)}
-                  className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl placeholder:text-gray-600 font-medium shadow-inner"
-                  placeholder="e.g. Case, Box, Single, Roll..."
-                />
-                <div className="flex flex-wrap gap-1.5 mt-1.5">
-                  {['Single', 'Box', 'Carton', 'Case', 'Roll'].map(f => (
-                    <button
-                      key={f}
-                      type="button"
-                      onClick={() => setNewPackType(f)}
-                      className="text-[9px] bg-[#1C1E24] hover:bg-[#2A2D35] text-gray-400 hover:text-white px-2 py-0.5 rounded-md border border-[#2A2A2A]/60 transition-colors cursor-pointer"
-                    >
-                      + {f}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Urgency */}
-              <div className="space-y-2">
-                <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Urgency Level</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['low', 'medium', 'high'] as const).map(u => (
-                    <button
-                      key={u}
-                      type="button"
-                      onClick={() => setNewUrgency(u)}
-                      className={`py-2 px-3 text-xs rounded-xl font-bold uppercase border transition-all cursor-pointer ${newUrgency === u
-                        ? u === 'high'
-                          ? 'bg-red-500/10 border-red-500 text-red-400 shadow-[0_0_8px_rgba(239,68,68,0.2)]'
-                          : u === 'medium'
-                            ? 'bg-orange-500/10 border-orange-500 text-orange-400'
-                            : 'bg-blue-500/10 border-blue-500 text-blue-400'
-                        : 'bg-[#14161C] border-[#2A2A2A] text-gray-400 hover:text-white'
-                        }`}
-                    >
-                      {u}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Timeframe Cycle */}
-              <div className="space-y-2">
-                <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Fulfillment Cycle</label>
-                <select
-                  value={newTimeframe}
-                  onChange={(e) => setNewTimeframe(e.target.value as any)}
-                  className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl appearance-none cursor-pointer"
-                >
-                  <option value="asap">ASAP (Within 24-48 hours)</option>
-                  <option value="1week">1 Week Cycle</option>
-                  <option value="2weeks">2 Week Cycle</option>
-                  <option value="monthly">Monthly / Custom</option>
-                </select>
-              </div>
-
-              {/* Estimated Price */}
-
-
-              {/* Notes */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Special Notes</label>
-                  <span className="text-[9px] uppercase tracking-wider text-gray-500 font-semibold italic">Optional</span>
-                </div>
-                <textarea
-                  value={newNotes}
-                  onChange={(e) => setNewNotes(e.target.value)}
-                  rows={2}
-                  className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl placeholder:text-gray-600 resize-none"
-                  placeholder="Alternate brands, special flavors..."
-                />
-              </div>
-
-              {/* 5. Quantity */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Quantity Required</label>
-                  <span className="text-[9px] uppercase tracking-wider text-gray-500 font-semibold italic">Optional (Defaults to 1)</span>
-                </div>
-                <input
-                  type="number"
-                  min="1"
-                  value={newQty}
-                  onChange={(e) => setNewQty(e.target.value)}
-                  className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl text-center font-mono shadow-inner font-bold"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full mt-2 bg-[#D4AF37] text-black py-3.5 rounded-xl font-bold uppercase tracking-widest text-xs shadow-lg hover:bg-[#E5C25A] active:bg-[#B3932E] transition-all cursor-pointer"
-              >
-                Add store request
-              </button>
-            </form>
-          </div>
-
-          {/* Suggested Reorders (Low stock widget) */}
-          <div className="bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl p-6 shadow-md text-left relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 to-[#D4AF37]" />
-
-            <h3 className="text-lg font-serif text-[#E5E1DA] mb-2 flex items-center gap-2">
-              <ShieldAlert className="w-5 h-5 text-red-400 animate-pulse" />
-              Suggested Reorders
-            </h3>
-            <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-4">Stock below threshold levels</p>
-
-            {lowStockSuggestions.length === 0 ? (
-              <p className="text-xs text-zinc-500 italic py-2">All inventory items are adequately stocked!</p>
-            ) : (
-              <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-                {lowStockSuggestions.slice(0, 10).map(item => (
-                  <div key={item.id} className="flex justify-between items-center p-3 bg-[#14161C] border border-[#2A2A2A] rounded-xl text-xs gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-bold text-gray-300 truncate uppercase">{item.brand}</p>
-                      {item.flavor && <p className="text-[#888] text-[10px] truncate">({item.flavor})</p>}
-                      <p className="text-[9px] text-red-400 font-semibold mt-1">
-                        Stock: {item.quantity} / Min: {item.reorderThreshold}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setNewBrand(item.brand);
-                        setNewFlavor(item.flavor || '');
-                        setNewCategory(item.category || '');
-                        setNewPackType(item.packType || 'Single');
-                        setNewQty('15'); // default suggested order count
-                        setNewUrgency('high');
-                        setNewNotes('Auto-restock request for low stock levels');
-                        toast.info(`Prefilled request with ${item.brand}`);
-                      }}
-                      className="p-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 border border-[#D4AF37]/30 hover:border-[#D4AF37]/50 rounded-lg text-[#D4AF37] transition-all shrink-0 cursor-pointer"
-                      title="Draft Request"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
+                  <div className="flex flex-wrap gap-1.5">
+                    {['Single', 'Box', 'Carton', 'Case', 'Roll', 'Item'].map(f => (
+                      <button
+                        key={f}
+                        type="button"
+                        onClick={() => setNewPackType(f)}
+                        className={`text-[10px] px-2.5 py-1.5 rounded-lg border font-bold uppercase tracking-wider transition-all cursor-pointer ${newPackType === f ? 'bg-[#D4AF37]/15 border-[#D4AF37]/40 text-[#D4AF37]' : 'bg-[#1C1E24] border-[#2A2A2A]/60 text-gray-400 hover:text-white hover:bg-[#2A2D35]'}`}
+                      >
+                        {f}
+                      </button>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                </div>
 
+                {/* Urgency + Quantity row */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Urgency</label>
+                    <div className="flex gap-1.5">
+                      {(['low', 'medium', 'high'] as const).map(u => (
+                        <button
+                          key={u}
+                          type="button"
+                          onClick={() => setNewUrgency(u)}
+                          className={`flex-1 py-2 text-[10px] rounded-xl font-bold uppercase border transition-all cursor-pointer ${newUrgency === u
+                            ? u === 'high'
+                              ? 'bg-red-500/15 border-red-500/50 text-red-400 shadow-[0_0_8px_rgba(239,68,68,0.15)]'
+                              : u === 'medium'
+                                ? 'bg-orange-500/15 border-orange-500/50 text-orange-400'
+                                : 'bg-blue-500/15 border-blue-500/50 text-blue-400'
+                            : 'bg-[#14161C] border-[#2A2A2A] text-gray-500 hover:text-white'
+                            }`}
+                        >
+                          {u}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Quantity</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={newQty}
+                      onChange={(e) => setNewQty(e.target.value)}
+                      className="w-full bg-[#14161C] border border-[#2A2A2A] focus:border-[#D4AF37] text-[#E5E1DA] p-2.5 text-sm rounded-xl text-center font-mono font-bold shadow-inner transition-all focus:outline-none focus:shadow-[0_0_0_3px_rgba(212,175,55,0.1)]"
+                    />
+                  </div>
+                </div>
+
+                {/* Timeframe */}
+                <div className="space-y-2">
+                  <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Fulfillment Cycle</label>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {([['asap', 'ASAP'], ['1week', '1 Wk'], ['2weeks', '2 Wk'], ['monthly', 'Mth']] as const).map(([val, label]) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setNewTimeframe(val as any)}
+                        className={`py-2 text-[10px] rounded-xl font-bold uppercase border transition-all cursor-pointer ${newTimeframe === val
+                          ? 'bg-[#D4AF37]/15 border-[#D4AF37]/40 text-[#D4AF37]'
+                          : 'bg-[#14161C] border-[#2A2A2A] text-gray-500 hover:text-white'
+                          }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Notes */}
+                <div className="space-y-2">
+                  <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Notes</label>
+                  <textarea
+                    value={newNotes}
+                    onChange={(e) => setNewNotes(e.target.value)}
+                    rows={2}
+                    className="w-full bg-[#14161C] border border-[#2A2A2A] focus:border-[#D4AF37] text-[#E5E1DA] p-3.5 text-sm rounded-xl placeholder:text-gray-600 resize-none transition-all focus:outline-none focus:shadow-[0_0_0_3px_rgba(212,175,55,0.1)]"
+                    placeholder="Alternate brands, special requests..."
+                  />
+                </div>
+
+                {/* Submit */}
+                <button
+                  type="submit"
+                  className="add-item-btn-shimmer w-full mt-2 py-4 bg-gradient-to-r from-[#D4AF37] via-[#E5C25A] to-[#D4AF37] text-black rounded-2xl font-bold uppercase tracking-[0.2em] text-sm shadow-lg shadow-[#D4AF37]/20 hover:shadow-[#D4AF37]/40 hover:scale-[1.01] active:scale-[0.98] transition-all duration-300 cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Sparkles className="w-5 h-5" />
+                  Add Store Request
+                </button>
+              </form>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Complete Session Dialog Modal */}
       {showCompleteModal && (
