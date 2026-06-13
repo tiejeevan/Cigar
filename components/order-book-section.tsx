@@ -2017,7 +2017,7 @@ export function OrderBookSection({
           }}
         >
           <div
-            className="bg-[#0D0F13] border border-[#2A2A2A] rounded-3xl p-6 sm:p-8 w-full max-w-lg shadow-2xl relative overflow-hidden flex flex-col text-left animate-in fade-in zoom-in-95 duration-200"
+            className="bg-[#0D0F13] border border-[#2A2A2A] rounded-3xl p-5 sm:p-7 w-full max-w-lg shadow-2xl relative flex flex-col text-left animate-in fade-in zoom-in-95 duration-200 max-h-[92vh] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Top Priority Color Bar */}
@@ -2040,7 +2040,7 @@ export function OrderBookSection({
 
             {modalEditing ? (
               /* ================== EDIT MODE ================== */
-              <div className="space-y-4 mt-2">
+              <div className="space-y-4 mt-2 overflow-y-auto pr-1">
                 <div className="border-b border-[#2A2A2A] pb-3 mb-2">
                   <h3 className="text-lg font-serif font-bold text-[#E5E1DA]">Edit Request Details</h3>
                   <p className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">{selectedOrderDetail.brand.toUpperCase()}</p>
@@ -2058,9 +2058,6 @@ export function OrderBookSection({
                       className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl font-mono font-bold"
                     />
                   </div>
-
-                  {/* Price Input */}
-
 
                   {/* Urgency Selector */}
                   <div className="space-y-1">
@@ -2122,7 +2119,7 @@ export function OrderBookSection({
               </div>
             ) : (
               /* ================== DETAIL VIEW MODE ================== */
-              <div className="space-y-5 mt-2 flex-1 flex flex-col justify-between">
+              <div className="space-y-4.5 mt-2 flex-1 overflow-y-auto pr-1">
                 <div className="space-y-3">
                   {/* Brand & Flavor */}
                   <div>
@@ -2191,6 +2188,15 @@ export function OrderBookSection({
                         <span>Approved by: <strong className="text-amber-400">{getEmployeeDisplayName(selectedOrderDetail.approvedBy)}</strong></span>
                         <span className="opacity-55">•</span>
                         <span className="font-mono">{formatDateTime(selectedOrderDetail.approvedAt || 0)}</span>
+                      </div>
+                    )}
+
+                    {selectedOrderDetail.completedBy && (
+                      <div className="flex items-center gap-1.5 text-purple-400">
+                        <ShoppingCart className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Completed by: <strong className="text-purple-400">{getEmployeeDisplayName(selectedOrderDetail.completedBy)}</strong></span>
+                        <span className="opacity-55">•</span>
+                        <span className="font-mono">{formatDateTime(selectedOrderDetail.completedAt || 0)}</span>
                       </div>
                     )}
 
