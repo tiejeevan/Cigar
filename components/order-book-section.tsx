@@ -1166,6 +1166,341 @@ export function OrderBookSection({
                   </div>
                 )}
               </div>
+
+              {/* ===== INTELLIGENT SUGGESTED ORDERS ===== */}
+              {(() => {
+                // ──────────────────────────────────────────────────
+                // LAYER 1: Dice Coefficient Fuzzy String Similarity
+                // ──────────────────────────────────────────────────
+                const bigrams = (str: string): Set<string> => {
+                  const s = str.toLowerCase().trim();
+                  const set = new Set<string>();
+                  for (let i = 0; i < s.length - 1; i++) {
+                    set.add(s.substring(i, i + 2));
+                  }
+                  return set;
+                };
+
+                const diceCoefficient = (a: string, b: string): number => {
+                  if (a === b) return 1;
+                  if (a.length < 2 || b.length < 2) return a === b ? 1 : 0;
+                  const bigramsA = bigrams(a);
+                  const bigramsB = bigrams(b);
+                  let intersection = 0;
+                  bigramsA.forEach(bg => { if (bigramsB.has(bg)) intersection++; });
+                  return (2 * intersection) / (bigramsA.size + bigramsB.size);
+                };
+
+                const normalize = (s: string) => s.toLowerCase().trim()
+                  .replace(/[''`]/g, '')
+                  .replace(/\s+/g, ' ')
+                  .replace(/s$/, ''); // strip trailing plural 's'
+
+                // ──────────────────────────────────────────────────
+                // LAYER 2: Cluster orders by fuzzy brand+flavor match
+                // ──────────────────────────────────────────────────
+                const SIMILARITY_THRESHOLD = 0.82;
+                const now = Date.now();
+                const DAY_MS = 86400000;
+
+                interface SuggestionCluster {
+                  canonicalBrand: string;
+                  canonicalFlavor: string;
+                  category: string;
+                  packType: string;
+                  totalQty: number;
+                  orderCount: number;
+                  recentOrderCount: number;   // orders in last 7 days
+                  weeklyOrderCount: number;   // orders in last 14 days
+                  sessionIds: Set<string>;    // unique fulfillment sessions
+                  oldestOrder: number;
+                  newestOrder: number;
+                  recencyScore: number;       // sum of recency weights
+                  inventoryStock: number | null;
+                  inventoryThreshold: number | null;
+                  isLowStock: boolean;
+                  isPending: boolean;         // already has pending/approved order
+                }
+
+                const clusters: SuggestionCluster[] = [];
+
+                // Find or create cluster for an order
+                const findCluster = (brand: string, flavor: string): SuggestionCluster | null => {
+                  const normBrand = normalize(brand);
+                  const normFlavor = normalize(flavor || '');
+                  const combined = normFlavor ? `${normBrand} ${normFlavor}` : normBrand;
+
+                  for (const cluster of clusters) {
+                    const clusterNormBrand = normalize(cluster.canonicalBrand);
+                    const clusterNormFlavor = normalize(cluster.canonicalFlavor || '');
+                    const clusterCombined = clusterNormFlavor ? `${clusterNormBrand} ${clusterNormFlavor}` : clusterNormBrand;
+
+                    // Exact normalized match
+                    if (combined === clusterCombined) return cluster;
+
+                    // Fuzzy match on brand (flavor must be close too)
+                    const brandSim = diceCoefficient(normBrand, clusterNormBrand);
+                    if (brandSim >= SIMILARITY_THRESHOLD) {
+                      if (!normFlavor && !clusterNormFlavor) return cluster;
+                      if (normFlavor && clusterNormFlavor) {
+                        const flavorSim = diceCoefficient(normFlavor, clusterNormFlavor);
+                        if (flavorSim >= SIMILARITY_THRESHOLD) return cluster;
+                      }
+                      // One has flavor, other doesn't — still consider it a match if brand is very similar
+                      if (brandSim >= 0.92) return cluster;
+                    }
+                  }
+                  return null;
+                };
+
+                // Process all orders into clusters
+                orders.forEach(o => {
+                  const daysAgo = (now - o.createdAt) / DAY_MS;
+                  const recencyWeight = Math.exp(-daysAgo / 30); // 30-day half-life decay
+
+                  let cluster = findCluster(o.brand, o.flavor);
+                  if (!cluster) {
+                    cluster = {
+                      canonicalBrand: o.brand,
+                      canonicalFlavor: o.flavor || '',
+                      category: o.category || 'Store Supplies',
+                      packType: o.packType || 'Item',
+                      totalQty: 0,
+                      orderCount: 0,
+                      recentOrderCount: 0,
+                      weeklyOrderCount: 0,
+                      sessionIds: new Set(),
+                      oldestOrder: o.createdAt,
+                      newestOrder: o.createdAt,
+                      recencyScore: 0,
+                      inventoryStock: null,
+                      inventoryThreshold: null,
+                      isLowStock: false,
+                      isPending: false
+                    };
+                    clusters.push(cluster);
+                  }
+
+                  cluster.totalQty += o.quantity;
+                  cluster.orderCount += 1;
+                  cluster.recencyScore += o.quantity * recencyWeight;
+
+                  if (daysAgo <= 7) cluster.recentOrderCount += 1;
+                  if (daysAgo <= 14) cluster.weeklyOrderCount += 1;
+
+                  if (o.createdAt < cluster.oldestOrder) cluster.oldestOrder = o.createdAt;
+                  if (o.createdAt > cluster.newestOrder) cluster.newestOrder = o.createdAt;
+
+                  // Track fulfillment sessions (order history awareness)
+                  if (o.listId) cluster.sessionIds.add(o.listId);
+
+                  // Track if already pending
+                  if (o.status === 'pending' || o.status === 'approved') {
+                    cluster.isPending = true;
+                  }
+
+                  // Use most common brand casing (the one with more orders keeps canonical name)
+                  // Keep category/packType from most recent order
+                  if (o.createdAt >= cluster.newestOrder) {
+                    if (o.category) cluster.category = o.category;
+                    if (o.packType) cluster.packType = o.packType;
+                  }
+                });
+
+                // ──────────────────────────────────────────────────
+                // LAYER 3: Inventory stock cross-reference
+                // ──────────────────────────────────────────────────
+                clusters.forEach(cluster => {
+                  const normBrand = normalize(cluster.canonicalBrand);
+                  const normFlavor = normalize(cluster.canonicalFlavor);
+
+                  // Fuzzy match against inventory items
+                  const matchedItem = items.find(inv => {
+                    const invBrand = normalize(inv.brand);
+                    const invFlavor = normalize(inv.flavor || '');
+                    const brandSim = diceCoefficient(normBrand, invBrand);
+                    if (brandSim < SIMILARITY_THRESHOLD) return false;
+                    if (!normFlavor && !invFlavor) return true;
+                    if (normFlavor && invFlavor) {
+                      return diceCoefficient(normFlavor, invFlavor) >= SIMILARITY_THRESHOLD;
+                    }
+                    return brandSim >= 0.92;
+                  });
+
+                  if (matchedItem) {
+                    cluster.inventoryStock = matchedItem.quantity;
+                    cluster.inventoryThreshold = matchedItem.reorderThreshold;
+                    cluster.isLowStock = matchedItem.quantity <= matchedItem.reorderThreshold;
+                  }
+                });
+
+                // ──────────────────────────────────────────────────
+                // LAYER 4: Weighted Composite Score
+                // ──────────────────────────────────────────────────
+                // Weights: frequency=2, volume=0.3, recency=3, lowStock=5, sessions=1.5
+                const scoredItems = clusters
+                  .filter(c => !c.isPending) // Exclude already-pending items
+                  .map(c => {
+                    const frequencyScore = c.orderCount * 2;
+                    const volumeScore = Math.min(c.totalQty * 0.3, 15); // cap volume contribution
+                    const recencyScore = c.recencyScore * 3;
+                    const lowStockBoost = c.isLowStock ? 5 + (c.inventoryThreshold! - c.inventoryStock!) * 0.5 : 0;
+                    const sessionCoverage = c.sessionIds.size * 1.5; // items across many sessions = staple goods
+                    const trendingBoost = c.recentOrderCount >= 2 ? 3 : 0; // ordered 2+ times in last 7 days
+
+                    const totalScore = frequencyScore + volumeScore + recencyScore + lowStockBoost + sessionCoverage + trendingBoost;
+
+                    // Determine signal tags for UI
+                    const signals: { label: string; color: string }[] = [];
+                    if (c.recentOrderCount >= 2) signals.push({ label: 'Trending', color: '#F97316' });
+                    if (c.isLowStock) signals.push({ label: 'Low Stock', color: '#EF4444' });
+                    if (c.sessionIds.size >= 3) signals.push({ label: 'Staple', color: '#8B5CF6' });
+                    if (c.orderCount >= 5) signals.push({ label: 'Frequent', color: '#D4AF37' });
+                    if (signals.length === 0 && c.orderCount >= 2) signals.push({ label: 'Reorder', color: '#6B7280' });
+
+                    return { ...c, totalScore, signals };
+                  })
+                  .sort((a, b) => b.totalScore - a.totalScore)
+                  .slice(0, 12);
+
+                if (scoredItems.length === 0) return null;
+
+                const rankColors = ['#D4AF37', '#C0C0C0', '#CD7F32'];
+
+                return (
+                  <div className="mt-6">
+                    {/* Section Header */}
+                    <div className="flex items-center justify-between mb-3.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#D4AF37]/20 to-[#D4AF37]/5 border border-[#D4AF37]/25 flex items-center justify-center">
+                          <Flame className="w-4 h-4 text-[#D4AF37]" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-serif text-[#E5E1DA] font-bold tracking-wide">Suggested Orders</h3>
+                          <p className="text-[8px] uppercase tracking-[0.2em] text-gray-500 font-bold">AI-ranked by frequency, recency & stock</p>
+                        </div>
+                      </div>
+                      <span className="text-[9px] uppercase tracking-wider text-gray-500 font-mono bg-[#14161C] border border-[#2A2A2A] px-2 py-0.5 rounded-md">
+                        Top {scoredItems.length}
+                      </span>
+                    </div>
+
+                    {/* Horizontal scroll on mobile, wrapping grid on desktop */}
+                    <div className="flex gap-3 overflow-x-auto pb-3 sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:overflow-x-visible scrollbar-none snap-x snap-mandatory">
+                      {scoredItems.map((item, idx) => {
+                        const isTop3 = idx < 3;
+                        const rankColor = rankColors[idx] || '#555';
+
+                        return (
+                          <div
+                            key={`${item.canonicalBrand}-${item.canonicalFlavor}-${idx}`}
+                            className={`snap-start shrink-0 w-[72%] sm:w-auto bg-[#0D0F13] border rounded-2xl p-3.5 sm:p-4 relative overflow-hidden group transition-all duration-300 hover:border-[#D4AF37]/40 ${isTop3 ? 'border-[#D4AF37]/20' : 'border-[#2A2A2A]'}`}
+                          >
+                            {/* Rank badge */}
+                            <div
+                              className="absolute top-3 right-3 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-mono font-extrabold border"
+                              style={{
+                                backgroundColor: `${rankColor}15`,
+                                borderColor: `${rankColor}40`,
+                                color: rankColor
+                              }}
+                            >
+                              {idx + 1}
+                            </div>
+
+                            {/* Top glow for top 3 */}
+                            {isTop3 && (
+                              <div
+                                className="absolute top-0 left-0 w-full h-[2px]"
+                                style={{ background: `linear-gradient(90deg, transparent, ${rankColor}60, transparent)` }}
+                              />
+                            )}
+
+                            {/* Signal tags */}
+                            {item.signals.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mb-2">
+                                {item.signals.map(sig => (
+                                  <span
+                                    key={sig.label}
+                                    className="text-[7px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border"
+                                    style={{
+                                      backgroundColor: `${sig.color}12`,
+                                      borderColor: `${sig.color}30`,
+                                      color: sig.color
+                                    }}
+                                  >
+                                    {sig.label}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Category icon + badge */}
+                            <div className="flex items-center gap-1.5 mb-2">
+                              {getCategoryIcon(item.category)}
+                              <span className={`text-[8px] border px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${getCategoryBadgeStyles(item.category)}`}>
+                                {item.category}
+                              </span>
+                            </div>
+
+                            {/* Item name */}
+                            <h4 className="text-sm font-serif text-[#E5E1DA] font-bold uppercase tracking-wide leading-tight mb-0.5 pr-8">
+                              {item.canonicalBrand}
+                            </h4>
+                            {item.canonicalFlavor && (
+                              <p className="text-[11px] text-gray-400 italic mb-2">({item.canonicalFlavor})</p>
+                            )}
+                            {!item.canonicalFlavor && <div className="mb-2" />}
+
+                            {/* Stats row */}
+                            <div className="flex items-center gap-1.5 mb-2.5 flex-wrap">
+                              <div className="flex items-center gap-1 bg-[#14161C] border border-[#2A2A2A]/60 px-1.5 py-0.5 rounded-md">
+                                <ShoppingCart className="w-2.5 h-2.5 text-[#D4AF37]" />
+                                <span className="text-[9px] font-mono font-bold text-[#E5E1DA]">{item.orderCount}</span>
+                                <span className="text-[7px] text-gray-500 uppercase">ord</span>
+                              </div>
+                              <div className="flex items-center gap-1 bg-[#14161C] border border-[#2A2A2A]/60 px-1.5 py-0.5 rounded-md">
+                                <Package className="w-2.5 h-2.5 text-blue-400" />
+                                <span className="text-[9px] font-mono font-bold text-[#E5E1DA]">{item.totalQty}</span>
+                                <span className="text-[7px] text-gray-500 uppercase">qty</span>
+                              </div>
+                              {item.sessionIds.size > 0 && (
+                                <div className="flex items-center gap-1 bg-[#14161C] border border-[#2A2A2A]/60 px-1.5 py-0.5 rounded-md">
+                                  <BookOpen className="w-2.5 h-2.5 text-purple-400" />
+                                  <span className="text-[9px] font-mono font-bold text-[#E5E1DA]">{item.sessionIds.size}</span>
+                                  <span className="text-[7px] text-gray-500 uppercase">runs</span>
+                                </div>
+                              )}
+                              {item.isLowStock && (
+                                <div className="flex items-center gap-1 bg-red-500/8 border border-red-500/20 px-1.5 py-0.5 rounded-md">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                                  <span className="text-[9px] font-mono font-bold text-red-400">{item.inventoryStock}/{item.inventoryThreshold}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Quick reorder button */}
+                            <button
+                              onClick={() => {
+                                setNewBrand(item.canonicalBrand);
+                                setNewFlavor(item.canonicalFlavor);
+                                setNewCategory(item.category);
+                                setNewPackType(item.packType);
+                                setShowAddItemModal(true);
+                                toast.info(`Prefilled with ${item.canonicalBrand}`);
+                              }}
+                              className="w-full py-2 bg-[#14161C] hover:bg-[#D4AF37]/10 border border-[#2A2A2A] hover:border-[#D4AF37]/40 rounded-xl text-[10px] font-bold uppercase tracking-wider text-gray-400 hover:text-[#D4AF37] transition-all duration-300 cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              Quick Reorder
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </>
           ) : (
             <OrderHistorySection searchQuery={searchQuery} onViewDetails={openOrderDetailModal} />
