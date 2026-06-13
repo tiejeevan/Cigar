@@ -15,23 +15,27 @@ function getSql() {
 // Ensure database tables exist with proper schema
 async function ensureTables(sql: any) {
   // Schema for items table
-  await sql`
-    CREATE TABLE IF NOT EXISTS items (
-      id SERIAL PRIMARY KEY,
-      category TEXT DEFAULT 'Cigarillos',
-      brand TEXT NOT NULL,
-      flavor TEXT NOT NULL,
-      "packType" TEXT NOT NULL,
-      quantity INTEGER NOT NULL DEFAULT 0,
-      "reorderThreshold" INTEGER NOT NULL DEFAULT 10,
-      "boxSize" INTEGER NOT NULL DEFAULT 15,
-      image TEXT,
-      barcode TEXT,
-      price NUMERIC(10, 2) DEFAULT 0.00,
-      flag TEXT,
-      "updatedAt" BIGINT NOT NULL
-    )
-  `;
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS items (
+        id SERIAL PRIMARY KEY,
+        category TEXT DEFAULT 'Cigarillos',
+        brand TEXT NOT NULL,
+        flavor TEXT NOT NULL,
+        "packType" TEXT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 0,
+        "reorderThreshold" INTEGER NOT NULL DEFAULT 10,
+        "boxSize" INTEGER NOT NULL DEFAULT 15,
+        image TEXT,
+        barcode TEXT,
+        price NUMERIC(10, 2) DEFAULT 0.00,
+        flag TEXT,
+        "updatedAt" BIGINT NOT NULL
+      )
+    `;
+  } catch (err) {
+    console.error('Error creating items table:', err);
+  }
 
   // Dynamically add boxSize and flag if missing
   try {
@@ -52,19 +56,151 @@ async function ensureTables(sql: any) {
   }
 
   // Schema for orders table
-  await sql`
-    CREATE TABLE IF NOT EXISTS orders (
-      id SERIAL PRIMARY KEY,
-      "inventoryId" INTEGER,
-      category TEXT DEFAULT 'Cigarillos',
-      brand TEXT NOT NULL,
-      flavor TEXT NOT NULL,
-      "packType" TEXT NOT NULL,
-      quantity INTEGER NOT NULL DEFAULT 1,
-      status TEXT NOT NULL DEFAULT 'pending',
-      "createdAt" BIGINT NOT NULL
-    )
-  `;
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS orders (
+        id SERIAL PRIMARY KEY,
+        "inventoryId" INTEGER,
+        category TEXT DEFAULT 'Cigarillos',
+        brand TEXT NOT NULL,
+        flavor TEXT NOT NULL,
+        "packType" TEXT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'pending',
+        "createdAt" BIGINT NOT NULL
+      )
+    `;
+  } catch (err) {
+    console.error('Error creating orders table:', err);
+  }
+
+  // Schema for employees table
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS employees (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        pin TEXT NOT NULL,
+        "createdAt" BIGINT NOT NULL
+      )
+    `;
+  } catch (err) {
+    console.error('Error creating employees table:', err);
+  }
+
+  // Dynamically add columns to orders table if missing
+  try {
+    const colsResult = await sql`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name='orders'
+    `;
+    const cols = colsResult.map((r: any) => r.column_name.toLowerCase());
+    if (!cols.includes('addedby')) {
+      await sql`ALTER TABLE orders ADD COLUMN "addedBy" TEXT`;
+    }
+    if (!cols.includes('completedby')) {
+      await sql`ALTER TABLE orders ADD COLUMN "completedBy" TEXT`;
+    }
+    if (!cols.includes('completedat')) {
+      await sql`ALTER TABLE orders ADD COLUMN "completedAt" BIGINT`;
+    }
+    if (!cols.includes('listid')) {
+      await sql`ALTER TABLE orders ADD COLUMN "listId" TEXT`;
+    }
+    if (!cols.includes('urgency')) {
+      await sql`ALTER TABLE orders ADD COLUMN urgency TEXT DEFAULT 'medium'`;
+    }
+    if (!cols.includes('timeframe')) {
+      await sql`ALTER TABLE orders ADD COLUMN timeframe TEXT DEFAULT '1week'`;
+    }
+    if (!cols.includes('estimatedprice')) {
+      await sql`ALTER TABLE orders ADD COLUMN "estimatedPrice" NUMERIC(10, 2) DEFAULT 0.00`;
+    }
+    if (!cols.includes('notes')) {
+      await sql`ALTER TABLE orders ADD COLUMN notes TEXT DEFAULT ''`;
+    }
+    if (!cols.includes('approvedby')) {
+      await sql`ALTER TABLE orders ADD COLUMN "approvedBy" TEXT`;
+    }
+    if (!cols.includes('approvedat')) {
+      await sql`ALTER TABLE orders ADD COLUMN "approvedAt" BIGINT`;
+    }
+    if (!cols.includes('receivedby')) {
+      await sql`ALTER TABLE orders ADD COLUMN "receivedBy" TEXT`;
+    }
+    if (!cols.includes('receivedat')) {
+      await sql`ALTER TABLE orders ADD COLUMN "receivedAt" BIGINT`;
+    }
+  } catch (err) {
+    console.error('Error adding columns to orders:', err);
+  }
+
+  // Schema for order_sessions table
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS order_sessions (
+        id SERIAL PRIMARY KEY,
+        "listId" TEXT UNIQUE NOT NULL,
+        "sessionName" TEXT,
+        "vendorName" TEXT,
+        "completedBy" TEXT NOT NULL,
+        "completedAt" BIGINT NOT NULL,
+        notes TEXT
+      )
+    `;
+  } catch (err) {
+    console.error('Error creating order_sessions table:', err);
+  }
+
+  // Schema for settings table
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        "updatedBy" TEXT,
+        "updatedAt" BIGINT NOT NULL
+      )
+    `;
+  } catch (err) {
+    console.error('Error creating settings table:', err);
+  }
+
+  // Ensure role column exists on employees table
+  try {
+    const colsResult = await sql`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name='employees'
+    `;
+    const cols = colsResult.map((r: any) => r.column_name.toLowerCase());
+    if (!cols.includes('role')) {
+      await sql`ALTER TABLE employees ADD COLUMN role TEXT DEFAULT 'employee'`;
+    }
+  } catch (err) {
+    console.error('Error adding role column to employees:', err);
+  }
+
+  // Pre-populate setting default
+  try {
+    const exists = await sql`SELECT key FROM settings WHERE key = 'isInventoryDisabled'`;
+    if (exists.length === 0) {
+      await sql`
+        INSERT INTO settings (key, value, "updatedBy", "updatedAt")
+        VALUES ('isInventoryDisabled', 'false', 'System', ${Date.now()})
+      `;
+    }
+    const existsPurchasing = await sql`SELECT key FROM settings WHERE key = 'isPurchasingDisabled'`;
+    if (existsPurchasing.length === 0) {
+      await sql`
+        INSERT INTO settings (key, value, "updatedBy", "updatedAt")
+        VALUES ('isPurchasingDisabled', 'false', 'System', ${Date.now()})
+      `;
+    }
+  } catch (err) {
+    console.error('Error pre-populating settings table:', err);
+  }
 }
 
 // Convert DB returned fields into accurate numbers/types for Javascript
@@ -73,6 +209,9 @@ function mapDbResult(row: any) {
   const mapped = { ...row };
   if ('price' in mapped && mapped.price !== null) {
     mapped.price = parseFloat(mapped.price);
+  }
+  if ('estimatedPrice' in mapped && mapped.estimatedPrice !== null) {
+    mapped.estimatedPrice = parseFloat(mapped.estimatedPrice);
   }
   if ('quantity' in mapped) {
     mapped.quantity = parseInt(mapped.quantity, 10);
@@ -91,6 +230,15 @@ function mapDbResult(row: any) {
   }
   if ('inventoryId' in mapped && mapped.inventoryId !== null) {
     mapped.inventoryId = parseInt(mapped.inventoryId, 10);
+  }
+  if ('completedAt' in mapped && mapped.completedAt !== null) {
+    mapped.completedAt = Number(mapped.completedAt);
+  }
+  if ('approvedAt' in mapped && mapped.approvedAt !== null) {
+    mapped.approvedAt = Number(mapped.approvedAt);
+  }
+  if ('receivedAt' in mapped && mapped.receivedAt !== null) {
+    mapped.receivedAt = Number(mapped.receivedAt);
   }
   return mapped;
 }
@@ -117,7 +265,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { action, id, item, order, updates, barcode } = body;
+    const { action, id, item, order, updates, barcode, name, pin, ids, completedBy, key, value, updatedBy } = body;
 
     // 1. Fetch all items (excluding image to optimize payload)
     if (action === 'getItems') {
@@ -132,6 +280,104 @@ export async function POST(req: NextRequest) {
     // 2. Fetch all orders
     if (action === 'getOrders') {
       const rows = await sql`SELECT * FROM orders ORDER BY id DESC`;
+      return NextResponse.json(rows.map(mapDbResult));
+    }
+
+    // 2.1 Fetch all system settings
+    if (action === 'getSettings') {
+      const rows = await sql`SELECT key, value, "updatedBy", "updatedAt" FROM settings`;
+      return NextResponse.json(rows.map(mapDbResult));
+    }
+
+    // 2.2 Update system setting
+    if (action === 'updateSetting') {
+      if (!key || value === undefined || !updatedBy) {
+        return NextResponse.json({ error: 'Missing key, value, or updatedBy' }, { status: 400 });
+      }
+      const rows = await sql`
+        INSERT INTO settings (key, value, "updatedBy", "updatedAt")
+        VALUES (${key}, ${value}, ${updatedBy}, ${Date.now()})
+        ON CONFLICT (key) 
+        DO UPDATE SET value = EXCLUDED.value, "updatedBy" = EXCLUDED."updatedBy", "updatedAt" = EXCLUDED."updatedAt"
+        RETURNING *
+      `;
+      return NextResponse.json(mapDbResult(rows[0]));
+    }
+
+    // 2a. Fetch all employees
+    if (action === 'getEmployees') {
+      const rows = await sql`SELECT id, name, role, "createdAt" FROM employees ORDER BY name ASC`;
+      return NextResponse.json(rows.map(mapDbResult));
+    }
+
+    // 2b. Register employee profile with 4-digit PIN
+    if (action === 'registerEmployee') {
+      if (!name || !pin) {
+        return NextResponse.json({ error: 'Missing name or pin' }, { status: 400 });
+      }
+      const exists = await sql`SELECT id FROM employees WHERE LOWER(name) = LOWER(${name}) LIMIT 1`;
+      if (exists.length > 0) {
+        return NextResponse.json({ error: 'Employee name already exists' }, { status: 400 });
+      }
+      const role = body.role || 'employee';
+      const rows = await sql`
+        INSERT INTO employees (name, pin, role, "createdAt")
+        VALUES (${name}, ${pin}, ${role}, ${Date.now()})
+        RETURNING id, name, role, "createdAt"
+      `;
+      return NextResponse.json(mapDbResult(rows[0]));
+    }
+
+    // 2c. Verify employee PIN
+    if (action === 'verifyEmployeePin') {
+      if (!name || !pin) {
+        return NextResponse.json({ error: 'Missing name or pin' }, { status: 400 });
+      }
+      const rows = await sql`SELECT id, name, role FROM employees WHERE name = ${name} AND pin = ${pin} LIMIT 1`;
+      if (rows.length === 0) {
+        return NextResponse.json({ success: false, error: 'Incorrect PIN' });
+      }
+      return NextResponse.json({ success: true, employee: mapDbResult(rows[0]) });
+    }
+
+    // 2d. Complete active list of orders
+    if (action === 'completeActiveOrders') {
+      if (!Array.isArray(ids) || ids.length === 0 || !completedBy) {
+        return NextResponse.json({ error: 'Missing ids or completedBy' }, { status: 400 });
+      }
+      const listId = `list_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+      const completedAt = Date.now();
+      const sessionName = body.sessionName || `Restock Session - ${new Date(completedAt).toLocaleDateString()}`;
+      const vendorName = body.vendorName || 'General Supplier';
+      const sessionNotes = body.notes || '';
+      
+      const results = [];
+      for (const orderId of ids) {
+        const updated = await sql`
+          UPDATE orders
+          SET status = 'ordered', "completedBy" = ${completedBy}, "completedAt" = ${completedAt}, "listId" = ${listId}
+          WHERE id = ${orderId}
+          RETURNING *
+        `;
+        results.push(mapDbResult(updated[0]));
+      }
+
+      // Record order session in DB
+      try {
+        await sql`
+          INSERT INTO order_sessions ("listId", "sessionName", "vendorName", "completedBy", "completedAt", notes)
+          VALUES (${listId}, ${sessionName}, ${vendorName}, ${completedBy}, ${completedAt}, ${sessionNotes})
+        `;
+      } catch (err) {
+        console.error('Error inserting into order_sessions:', err);
+      }
+
+      return NextResponse.json({ success: true, listId, completedAt, results });
+    }
+
+    // 2e. Fetch all order sessions
+    if (action === 'getOrderSessions') {
+      const rows = await sql`SELECT * FROM order_sessions ORDER BY "completedAt" DESC`;
       return NextResponse.json(rows.map(mapDbResult));
     }
 
@@ -187,7 +433,7 @@ export async function POST(req: NextRequest) {
     // 5. Create new purchasing order
     if (action === 'addOrder') {
       const rows = await sql`
-        INSERT INTO orders ("inventoryId", category, brand, flavor, "packType", quantity, status, "createdAt")
+        INSERT INTO orders ("inventoryId", category, brand, flavor, "packType", quantity, status, "createdAt", "addedBy", urgency, timeframe, "estimatedPrice", notes)
         VALUES (
           ${order.inventoryId || null}, 
           ${order.category || 'Cigarillos'}, 
@@ -196,7 +442,12 @@ export async function POST(req: NextRequest) {
           ${order.packType || 'Single'}, 
           ${parseInt(order.quantity, 10) || 1}, 
           ${order.status || 'pending'}, 
-          ${Date.now()}
+          ${Date.now()},
+          ${order.addedBy || null},
+          ${order.urgency || 'medium'},
+          ${order.timeframe || '1week'},
+          ${order.estimatedPrice || 0.00},
+          ${order.notes || ''}
         )
         RETURNING *
       `;
@@ -268,6 +519,16 @@ export async function POST(req: NextRequest) {
       const packType = updates.packType !== undefined ? updates.packType : existing.packType;
       const quantity = updates.quantity !== undefined ? parseInt(updates.quantity, 10) : parseInt(existing.quantity, 10);
       const status = updates.status !== undefined ? updates.status : existing.status;
+      const urgency = updates.urgency !== undefined ? updates.urgency : existing.urgency;
+      const timeframe = updates.timeframe !== undefined ? updates.timeframe : existing.timeframe;
+      const estimatedPrice = updates.estimatedPrice !== undefined ? parseFloat(updates.estimatedPrice) : (existing.estimatedPrice !== null ? parseFloat(existing.estimatedPrice) : 0.00);
+      const notes = updates.notes !== undefined ? updates.notes : existing.notes;
+      const approvedBy = updates.approvedBy !== undefined ? updates.approvedBy : existing.approvedBy;
+      const approvedAt = updates.approvedAt !== undefined ? (updates.approvedAt !== null ? Number(updates.approvedAt) : null) : (existing.approvedAt !== null ? Number(existing.approvedAt) : null);
+      const completedBy = updates.completedBy !== undefined ? updates.completedBy : existing.completedBy;
+      const completedAt = updates.completedAt !== undefined ? (updates.completedAt !== null ? Number(updates.completedAt) : null) : (existing.completedAt !== null ? Number(existing.completedAt) : null);
+      const receivedBy = updates.receivedBy !== undefined ? updates.receivedBy : existing.receivedBy;
+      const receivedAt = updates.receivedAt !== undefined ? (updates.receivedAt !== null ? Number(updates.receivedAt) : null) : (existing.receivedAt !== null ? Number(existing.receivedAt) : null);
 
       const updateRows = await sql`
         UPDATE orders
@@ -278,10 +539,38 @@ export async function POST(req: NextRequest) {
           flavor = ${flavor},
           "packType" = ${packType},
           quantity = ${quantity},
-          status = ${status}
+          status = ${status},
+          urgency = ${urgency},
+          timeframe = ${timeframe},
+          "estimatedPrice" = ${estimatedPrice},
+          notes = ${notes},
+          "approvedBy" = ${approvedBy},
+          "approvedAt" = ${approvedAt},
+          "completedBy" = ${completedBy},
+          "completedAt" = ${completedAt},
+          "receivedBy" = ${receivedBy},
+          "receivedAt" = ${receivedAt}
         WHERE id = ${id}
         RETURNING *
       `;
+
+      // Auto-increment quantity in items if status changes to 'received'
+      if (status === 'received' && existing.status !== 'received') {
+        const targetInventoryId = inventoryId || existing.inventoryId;
+        if (targetInventoryId) {
+          const invItem = await sql`SELECT quantity FROM items WHERE id = ${targetInventoryId} LIMIT 1`;
+          if (invItem.length > 0) {
+            const currentQty = parseInt(invItem[0].quantity, 10) || 0;
+            const newQty = currentQty + quantity;
+            await sql`
+              UPDATE items 
+              SET quantity = ${newQty}, "updatedAt" = ${Date.now()} 
+              WHERE id = ${targetInventoryId}
+            `;
+          }
+        }
+      }
+
       return NextResponse.json(mapDbResult(updateRows[0]));
     }
 
@@ -509,6 +798,8 @@ export async function POST(req: NextRequest) {
     if (action === 'wipeDatabase') {
       await sql`DELETE FROM items`;
       await sql`DELETE FROM orders`;
+      await sql`DELETE FROM employees`;
+      await sql`UPDATE settings SET value = 'false', "updatedBy" = 'System', "updatedAt" = ${Date.now()} WHERE key IN ('isInventoryDisabled', 'isPurchasingDisabled')`;
       return NextResponse.json({ success: true });
     }
 

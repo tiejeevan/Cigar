@@ -4,9 +4,9 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Settings, Download, Upload, AlertCircle, RefreshCw, 
-  FileText, Check, Database, HelpCircle, Trash2, GitMerge, Wand2
+  FileText, Check, Database, HelpCircle, Trash2, GitMerge, Wand2, ShoppingBag
 } from 'lucide-react';
-import { db } from '@/lib/db';
+import { db, useLiveQuery, Employee } from '@/lib/db';
 import { toast } from 'sonner';
 import { StockWizardModal } from '@/components/stock-wizard-modal';
 
@@ -14,9 +14,17 @@ interface SettingsModalProps {
   onClose: () => void;
   activeItemsCount: number;
   activeOrdersCount: number;
+  activeEmployee: Employee | null;
+  setActiveEmployee: (employee: Employee | null) => void;
 }
 
-export function SettingsModal({ onClose, activeItemsCount, activeOrdersCount }: SettingsModalProps) {
+export function SettingsModal({ 
+  onClose, 
+  activeItemsCount, 
+  activeOrdersCount,
+  activeEmployee,
+  setActiveEmployee
+}: SettingsModalProps) {
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [merging, setMerging] = useState(false);
@@ -30,6 +38,108 @@ export function SettingsModal({ onClose, activeItemsCount, activeOrdersCount }: 
 
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [wiping, setWiping] = useState(false);
+
+  // Settings live query
+  const settings = useLiveQuery(() => db.settings.get(), []) || [];
+  const employees = useLiveQuery(() => db.employees.list(), []) || [];
+  
+  const isInvDisabledSetting = settings.find(s => s.key === 'isInventoryDisabled');
+  const isInventoryDisabled = isInvDisabledSetting?.value === 'true';
+
+  const isPurchasingDisabledSetting = settings.find(s => s.key === 'isPurchasingDisabled');
+  const isPurchasingDisabled = isPurchasingDisabledSetting?.value === 'true';
+
+  const [showAuthGate, setShowAuthGate] = useState(false);
+  const [settingToToggle, setSettingToToggle] = useState<'inventory' | 'purchasing' | null>(null);
+  const [authName, setAuthName] = useState('');
+  const [authPin, setAuthPin] = useState('');
+
+  // Load session
+  useEffect(() => {
+    if (activeEmployee) {
+      setAuthName(activeEmployee.name);
+    }
+  }, [activeEmployee]);
+
+  // Set default authName dropdown name
+  useEffect(() => {
+    if (employees.length > 0 && !authName) {
+      setAuthName(employees[0].name);
+    }
+  }, [employees, authName]);
+
+  const handleToggleInventory = async () => {
+    if (activeEmployee) {
+      const newVal = !isInventoryDisabled;
+      await db.settings.update('isInventoryDisabled', String(newVal), activeEmployee.name);
+      toast.success(newVal ? 'Inventory module disabled' : 'Inventory module enabled');
+    } else {
+      setSettingToToggle('inventory');
+      setShowAuthGate(true);
+      setAuthPin('');
+    }
+  };
+
+  const handleTogglePurchasing = async () => {
+    if (activeEmployee) {
+      const newVal = !isPurchasingDisabled;
+      await db.settings.update('isPurchasingDisabled', String(newVal), activeEmployee.name);
+      toast.success(newVal ? 'Purchasing module disabled' : 'Purchasing module enabled');
+    } else {
+      setSettingToToggle('purchasing');
+      setShowAuthGate(true);
+      setAuthPin('');
+    }
+  };
+
+  const handleAuthorizeToggle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const targetName = authName || (employees[0] ? employees[0].name : '');
+    if (!targetName) {
+      toast.error('Select employee or set up PIN in Order Book tab');
+      return;
+    }
+    if (!/^\d{4}$/.test(authPin)) {
+      toast.error('PIN must be 4 digits');
+      return;
+    }
+
+    try {
+      const res = await db.employees.verifyPin(targetName, authPin);
+      if (res && res.success && res.employee) {
+        if (settingToToggle === 'purchasing') {
+          const newVal = !isPurchasingDisabled;
+          await db.settings.update('isPurchasingDisabled', String(newVal), res.employee.name);
+          toast.success(newVal ? 'Purchasing module disabled' : 'Purchasing module enabled');
+        } else {
+          const newVal = !isInventoryDisabled;
+          await db.settings.update('isInventoryDisabled', String(newVal), res.employee.name);
+          toast.success(newVal ? 'Inventory module disabled' : 'Inventory module enabled');
+        }
+        
+        setActiveEmployee(res.employee);
+        sessionStorage.setItem('active_employee', JSON.stringify(res.employee));
+        
+        setShowAuthGate(false);
+        setAuthPin('');
+        setSettingToToggle(null);
+      } else {
+        toast.error('Incorrect PIN');
+      }
+    } catch (e) {
+      toast.error('Connection error authorizing PIN');
+    }
+  };
+
+  const formatAuditDate = (ts: number) => {
+    if (!ts) return '';
+    return new Date(Number(ts)).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
 
 
   // Reset wipe confirmation after 5 seconds of inactivity
@@ -242,6 +352,196 @@ export function SettingsModal({ onClose, activeItemsCount, activeOrdersCount }: 
               <p className="text-[9px] uppercase tracking-widest text-[#888] font-bold">Orders</p>
             </div>
           </div>
+        </div>
+
+        {/* Inventory Management Toggle Card */}
+        <div className="bg-[#111216] border border-[#2A2A2A] rounded-3xl p-6 shadow-sm flex flex-col gap-4 text-left">
+          <div className="flex items-center justify-between">
+            <div className="flex-1 pr-4">
+              <h4 className="text-lg font-serif italic text-[#D4AF37] mb-1 flex items-center gap-2">
+                <Database className="w-5 h-5 text-[#D4AF37]" /> Inventory Module
+              </h4>
+              <p className="text-xs text-gray-400 leading-relaxed max-w-md">
+                Toggle the availability and queries of the inventory module. When disabled, the inventory tab, bulk/single intake forms, and all background data synchronization requests for products are completely deactivated.
+              </p>
+              
+              {isInvDisabledSetting && (
+                <p className="text-[10px] text-[#D4AF37]/80 font-mono mt-3 uppercase tracking-wider bg-[#1A1D24] inline-block px-3 py-1.5 rounded-lg border border-[#2A2A2A]/40">
+                  Status: {isInventoryDisabled ? 'Disabled' : 'Enabled'} by {isInvDisabledSetting.updatedBy} on {formatAuditDate(isInvDisabledSetting.updatedAt)}
+                </p>
+              )}
+            </div>
+            
+            <button
+              onClick={handleToggleInventory}
+              className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                isInventoryDisabled ? 'bg-gray-700' : 'bg-[#D4AF37]'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-[#0A0B0E] shadow ring-0 transition duration-200 ease-in-out ${
+                  isInventoryDisabled ? 'translate-x-0' : 'translate-x-5'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Inline Auth Gate */}
+          {showAuthGate && settingToToggle === 'inventory' && (
+            <div className="border-t border-[#2A2A2A]/80 pt-4 mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+              <form onSubmit={handleAuthorizeToggle} className="space-y-4 max-w-sm">
+                <p className="text-xs font-bold text-yellow-500 flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  PIN Authorization required to modify system parameters.
+                </p>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="block text-[9px] uppercase tracking-wider text-[#888] font-bold">Select Profile</label>
+                    {employees.length === 0 ? (
+                      <div className="text-[10px] text-[#888] italic">No employees found. Setup profile in Order Book first.</div>
+                    ) : (
+                      <select
+                        value={authName}
+                        onChange={(e) => setAuthName(e.target.value)}
+                        className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-2 text-xs focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl cursor-pointer"
+                      >
+                        {employees.map(e => (
+                          <option key={e.id} value={e.name}>{e.name}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <label className="block text-[9px] uppercase tracking-wider text-[#888] font-bold">4-Digit PIN</label>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      pattern="\d*"
+                      maxLength={4}
+                      value={authPin}
+                      onChange={(e) => setAuthPin(e.target.value.replace(/\D/g, ''))}
+                      className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-2 text-center font-mono text-xs focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl"
+                      placeholder="••••"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button 
+                    type="submit"
+                    className="flex-1 bg-[#D4AF37] text-black py-2 rounded-xl text-xs font-bold uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
+                  >
+                    Authorize Toggle
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setShowAuthGate(false)}
+                    className="px-4 bg-[#2A2A2A] text-white py-2 rounded-xl text-xs font-bold uppercase tracking-wider active:scale-95 transition-all"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+        </div>
+
+        {/* Purchasing Management Toggle Card */}
+        <div className="bg-[#111216] border border-[#2A2A2A] rounded-3xl p-6 shadow-sm flex flex-col gap-4 text-left">
+          <div className="flex items-center justify-between">
+            <div className="flex-1 pr-4">
+              <h4 className="text-lg font-serif italic text-[#D4AF37] mb-1 flex items-center gap-2">
+                <ShoppingBag className="w-5 h-5 text-[#D4AF37]" /> Purchasing Module
+              </h4>
+              <p className="text-xs text-gray-400 leading-relaxed max-w-md">
+                Toggle the availability and visibility of the purchasing (Orders) module. When disabled, the purchasing tab, custom order creation panel, and all background vendor/fulfillment operations are completely deactivated.
+              </p>
+              
+              {isPurchasingDisabledSetting && (
+                <p className="text-[10px] text-[#D4AF37]/80 font-mono mt-3 uppercase tracking-wider bg-[#1A1D24] inline-block px-3 py-1.5 rounded-lg border border-[#2A2A2A]/40">
+                  Status: {isPurchasingDisabled ? 'Disabled' : 'Enabled'} by {isPurchasingDisabledSetting.updatedBy} on {formatAuditDate(isPurchasingDisabledSetting.updatedAt)}
+                </p>
+              )}
+            </div>
+            
+            <button
+              onClick={handleTogglePurchasing}
+              className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                isPurchasingDisabled ? 'bg-gray-700' : 'bg-[#D4AF37]'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-[#0A0B0E] shadow ring-0 transition duration-200 ease-in-out ${
+                  isPurchasingDisabled ? 'translate-x-0' : 'translate-x-5'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Inline Auth Gate */}
+          {showAuthGate && settingToToggle === 'purchasing' && (
+            <div className="border-t border-[#2A2A2A]/80 pt-4 mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+              <form onSubmit={handleAuthorizeToggle} className="space-y-4 max-w-sm">
+                <p className="text-xs font-bold text-yellow-500 flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  PIN Authorization required to modify system parameters.
+                </p>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="block text-[9px] uppercase tracking-wider text-[#888] font-bold">Select Profile</label>
+                    {employees.length === 0 ? (
+                      <div className="text-[10px] text-[#888] italic">No employees found. Setup profile in Order Book first.</div>
+                    ) : (
+                      <select
+                        value={authName}
+                        onChange={(e) => setAuthName(e.target.value)}
+                        className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-2 text-xs focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl cursor-pointer"
+                      >
+                        {employees.map(e => (
+                          <option key={e.id} value={e.name}>{e.name}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <label className="block text-[9px] uppercase tracking-wider text-[#888] font-bold">4-Digit PIN</label>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      pattern="\d*"
+                      maxLength={4}
+                      value={authPin}
+                      onChange={(e) => setAuthPin(e.target.value.replace(/\D/g, ''))}
+                      className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-2 text-center font-mono text-xs focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl"
+                      placeholder="••••"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button 
+                    type="submit"
+                    className="flex-1 bg-[#D4AF37] text-black py-2 rounded-xl text-xs font-bold uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
+                  >
+                    Authorize Toggle
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setShowAuthGate(false)}
+                    className="px-4 bg-[#2A2A2A] text-white py-2 rounded-xl text-xs font-bold uppercase tracking-wider active:scale-95 transition-all"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
         </div>
 
         {/* Stock Wizard Engine (Interactive) */}

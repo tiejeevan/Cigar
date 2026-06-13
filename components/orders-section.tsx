@@ -19,7 +19,9 @@ export function OrdersSection({ orders, inventory }: OrdersSectionProps) {
   const [newPackType, setNewPackType] = useState('Box');
   const [newQty, setNewQty] = useState('1');
   
-  const filteredOrders = orders.filter(o => 
+  const pendingOrders = orders.filter(o => o.status === 'pending');
+
+  const filteredOrders = pendingOrders.filter(o => 
     o.brand.toLowerCase().includes(searchQuery.toLowerCase()) || 
     o.flavor.toLowerCase().includes(searchQuery.toLowerCase())
   );

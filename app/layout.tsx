@@ -29,7 +29,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} ${playfair.variable} ${jetbrainsMono.variable}`}>
+    <html lang="en" className={`${inter.variable} ${playfair.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
       <body className="font-sans bg-[#0A0B0E] text-[#E5E1DA] min-h-screen selection:bg-[#D4AF37] selection:text-black">
         {children}
         <Toaster 

@@ -36,6 +36,20 @@ export interface InventoryItem {
   updatedAt: number;
 }
 
+export interface Employee {
+  id: number;
+  name: string;
+  role: 'employee' | 'manager';
+  createdAt: number;
+}
+
+export interface SettingItem {
+  key: string;
+  value: string;
+  updatedBy: string;
+  updatedAt: number;
+}
+
 export interface OrderItem {
   id?: number;
   inventoryId?: number;
@@ -44,8 +58,30 @@ export interface OrderItem {
   flavor: string;
   packType: string;
   quantity: number;
-  status: 'pending' | 'ordered';
+  status: 'pending' | 'approved' | 'ordered' | 'received';
   createdAt: number;
+  addedBy?: string | null;
+  completedBy?: string | null;
+  completedAt?: number | null;
+  listId?: string | null;
+  urgency?: 'low' | 'medium' | 'high';
+  timeframe?: 'asap' | '1week' | '2weeks' | 'monthly';
+  estimatedPrice?: number;
+  notes?: string;
+  approvedBy?: string | null;
+  approvedAt?: number | null;
+  receivedBy?: string | null;
+  receivedAt?: number | null;
+}
+
+export interface OrderSession {
+  id?: number;
+  listId: string;
+  sessionName?: string;
+  vendorName?: string;
+  completedBy: string;
+  completedAt: number;
+  notes?: string;
 }
 
 // Simple event-target to notify subscribers when any mutation is completed locally
@@ -151,6 +187,42 @@ export const db = {
     delete: async (id: number) => {
       await apiCall({ action: 'deleteOrder', id });
       notifyDbChanged();
+    },
+    completeActiveOrders: async (ids: number[], completedBy: string, sessionName?: string, vendorName?: string, notes?: string) => {
+      const res = await apiCall({ action: 'completeActiveOrders', ids, completedBy, sessionName, vendorName, notes });
+      notifyDbChanged();
+      return res;
+    }
+  },
+  orderSessions: {
+    list: async () => {
+      const res = await apiCall({ action: 'getOrderSessions' });
+      return (res || []) as OrderSession[];
+    }
+  },
+  employees: {
+    list: async () => {
+      const res = await apiCall({ action: 'getEmployees' });
+      return (res || []) as Employee[];
+    },
+    register: async (name: string, pin: string, role: 'employee' | 'manager' = 'employee') => {
+      const res = await apiCall({ action: 'registerEmployee', name, pin, role });
+      return res;
+    },
+    verifyPin: async (name: string, pin: string) => {
+      const res = await apiCall({ action: 'verifyEmployeePin', name, pin });
+      return res;
+    }
+  },
+  settings: {
+    get: async () => {
+      const res = await apiCall({ action: 'getSettings' });
+      return (res || []) as SettingItem[];
+    },
+    update: async (key: string, value: string, updatedBy: string) => {
+      const res = await apiCall({ action: 'updateSetting', key, value, updatedBy });
+      notifyDbChanged();
+      return res;
     }
   },
   getItemImage: async (id: number, updatedAt: number): Promise<string | undefined> => {
