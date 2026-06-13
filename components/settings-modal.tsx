@@ -4,7 +4,8 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Settings, Download, Upload, AlertCircle, RefreshCw, 
-  FileText, Check, Database, HelpCircle, Trash2, GitMerge, Wand2, ShoppingBag
+  FileText, Check, Database, HelpCircle, Trash2, GitMerge, Wand2, ShoppingBag,
+  Users, UserPlus, Edit2, RotateCcw
 } from 'lucide-react';
 import { db, useLiveQuery, Employee } from '@/lib/db';
 import { toast } from 'sonner';
@@ -38,6 +39,21 @@ export function SettingsModal({
 
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [wiping, setWiping] = useState(false);
+
+  const [showUserManagement, setShowUserManagement] = useState(false);
+  
+  // Add user form
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserPin, setNewUserPin] = useState('');
+  const [newUserRole, setNewUserRole] = useState<'employee' | 'manager'>('employee');
+  const [registeringUser, setRegisteringUser] = useState(false);
+
+  // Edit user state
+  const [editingUserId, setEditingUserId] = useState<number | null>(null);
+  const [editingUserName, setEditingUserName] = useState('');
+  const [editingUserPin, setEditingUserPin] = useState('');
+  const [editingUserRole, setEditingUserRole] = useState<'employee' | 'manager'>('employee');
+  const [updatingUser, setUpdatingUser] = useState(false);
 
   // Settings live query
   const settings = useLiveQuery(() => db.settings.get(), []) || [];
@@ -297,8 +313,8 @@ export function SettingsModal({
       
       if (result.success) {
         toast.success(
-          `Successfully restored ${result.itemsCount} items and ${result.ordersCount} orders!`, 
-          { id: 'backup-import', duration: 5000 }
+          `Successfully restored ${result.itemsCount} items, ${result.ordersCount} orders, ${result.employeesCount} users, ${result.sessionsCount} sessions, ${result.notesCount} notes, and ${result.settingsCount} settings!`, 
+          { id: 'backup-import', duration: 6000 }
         );
         // Reset state after successful import
         setSelectedFile(null);
@@ -352,6 +368,335 @@ export function SettingsModal({
               <p className="text-[9px] uppercase tracking-widest text-[#888] font-bold">Orders</p>
             </div>
           </div>
+        </div>
+
+        {/* Manage Users Card */}
+        <div className="bg-[#111216] border border-[#2A2A2A] rounded-3xl p-6 shadow-sm flex flex-col gap-4 text-left">
+          <div className="flex items-center justify-between">
+            <div className="flex-1 pr-4">
+              <h4 className="text-lg font-serif italic text-[#D4AF37] mb-1 flex items-center gap-2">
+                <Users className="w-5 h-5 text-[#D4AF37]" /> Manage Users
+              </h4>
+              <p className="text-xs text-gray-400 leading-relaxed max-w-md">
+                Register new employees, update active profiles, change PIN numbers, soft-delete ex-employees, or restore profiles.
+              </p>
+            </div>
+            
+            <button
+              onClick={() => setShowUserManagement(!showUserManagement)}
+              className="px-4 py-2 bg-[#1A1D24] hover:bg-[#2A2A2A] text-gray-300 hover:text-white border border-[#2A2A2A] rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer active:scale-95 shrink-0"
+            >
+              {showUserManagement ? 'Collapse' : 'Expand'}
+            </button>
+          </div>
+
+          <AnimatePresence>
+            {showUserManagement && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden space-y-6 border-t border-[#2A2A2A]/80 pt-4 mt-2"
+              >
+                {/* Add New User Row */}
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!newUserName.trim()) {
+                      toast.error('Name is required');
+                      return;
+                    }
+                    if (!/^\d{4}$/.test(newUserPin)) {
+                      toast.error('PIN must be exactly 4 digits');
+                      return;
+                    }
+                    try {
+                      setRegisteringUser(true);
+                      const res = await db.employees.register(newUserName.trim(), newUserPin, newUserRole);
+                      if (res && !res.error) {
+                        toast.success(`User profile registered: ${newUserName}`);
+                        setNewUserName('');
+                        setNewUserPin('');
+                        setNewUserRole('employee');
+                      } else {
+                        toast.error(res?.error || 'Registration failed');
+                      }
+                    } catch (err) {
+                      toast.error('Failed to register employee');
+                    } finally {
+                      setRegisteringUser(false);
+                    }
+                  }}
+                  className="bg-[#14161C]/30 border border-[#2A2A2A] rounded-2xl p-4 space-y-3"
+                >
+                  <span className="text-[10px] uppercase tracking-widest text-[#888] font-bold block">Register New Profile</span>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">Name</label>
+                      <input
+                        type="text"
+                        value={newUserName}
+                        onChange={(e) => setNewUserName(e.target.value)}
+                        placeholder="John Doe"
+                        className="bg-[#0D0F13] border border-[#2A2A2A] text-[#E5E1DA] px-3 py-2 text-xs focus:outline-none focus:border-[#D4AF37] rounded-xl font-sans"
+                        required
+                      />
+                    </div>
+                    
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">4-Digit PIN</label>
+                      <input
+                        type="password"
+                        inputMode="numeric"
+                        pattern="\d*"
+                        maxLength={4}
+                        value={newUserPin}
+                        onChange={(e) => setNewUserPin(e.target.value.replace(/\D/g, ''))}
+                        placeholder="••••"
+                        className="bg-[#0D0F13] border border-[#2A2A2A] text-[#E5E1DA] px-3 py-2 text-xs focus:outline-none focus:border-[#D4AF37] rounded-xl font-mono text-center tracking-[0.5em]"
+                        required
+                      />
+                    </div>
+                    
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">Role</label>
+                      <select
+                        value={newUserRole}
+                        onChange={(e) => setNewUserRole(e.target.value as 'employee' | 'manager')}
+                        className="bg-[#0D0F13] border border-[#2A2A2A] text-[#E5E1DA] px-3 py-2 text-xs focus:outline-none focus:border-[#D4AF37] rounded-xl cursor-pointer"
+                      >
+                        <option value="employee">Employee</option>
+                        <option value="manager">Manager</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={registeringUser}
+                    className="w-full bg-[#D4AF37] disabled:bg-gray-700 text-black py-2 rounded-xl text-xs font-bold uppercase tracking-wider active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Add User</span>
+                  </button>
+                </form>
+
+                {/* User List */}
+                <div className="space-y-3">
+                  <span className="text-[10px] uppercase tracking-widest text-[#888] font-bold block">Current User Profiles ({employees.length})</span>
+                  
+                  <div className="flex flex-col gap-2 max-h-[350px] overflow-y-auto pr-1">
+                    {employees.map((emp) => {
+                      const isEditing = editingUserId === emp.id;
+                      const isAdminAccount = emp.name.toLowerCase() === 'admin';
+                      return (
+                        <div
+                          key={emp.id}
+                          className={`group flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-[#14161C]/50 border rounded-2xl transition-all duration-200 ${
+                            emp.isDeleted 
+                              ? 'border-[#2A2A2A] opacity-50 bg-[#14161C]/10' 
+                              : 'border-[#2A2A2A] hover:border-[#D4AF37]/25'
+                          }`}
+                        >
+                          {isEditing ? (
+                            <form
+                              onSubmit={async (e) => {
+                                e.preventDefault();
+                                if (!editingUserName.trim()) {
+                                  toast.error('Name cannot be empty');
+                                  return;
+                                }
+                                if (!/^\d{4}$/.test(editingUserPin)) {
+                                  toast.error('PIN must be 4 digits');
+                                  return;
+                                }
+                                try {
+                                  setUpdatingUser(true);
+                                  const res = await db.employees.update(emp.id, {
+                                    name: editingUserName.trim(),
+                                    pin: editingUserPin,
+                                    role: editingUserRole
+                                  });
+                                  if (res && !res.error) {
+                                    toast.success('User details updated');
+                                    // If current active user renamed themselves or updated details
+                                    if (activeEmployee && activeEmployee.id === emp.id) {
+                                      const updatedEmp = { ...activeEmployee, name: editingUserName.trim(), role: editingUserRole };
+                                      setActiveEmployee(updatedEmp);
+                                      sessionStorage.setItem('active_employee', JSON.stringify(updatedEmp));
+                                    }
+                                    setEditingUserId(null);
+                                  } else {
+                                    toast.error(res?.error || 'Update failed');
+                                  }
+                                } catch (err) {
+                                  toast.error('Failed to update employee');
+                                } finally {
+                                  setUpdatingUser(false);
+                                }
+                              }}
+                              className="flex-1 grid grid-cols-1 sm:grid-cols-4 gap-2.5 items-end text-left"
+                            >
+                              <div className="flex flex-col gap-1">
+                                <label className="text-[8px] uppercase tracking-wider text-gray-500 font-bold">Name</label>
+                                <input
+                                  type="text"
+                                  value={editingUserName}
+                                  onChange={(e) => setEditingUserName(e.target.value)}
+                                  disabled={isAdminAccount}
+                                  className="bg-[#0D0F13] border border-[#2A2A2A] text-[#E5E1DA] px-2.5 py-1 text-xs focus:outline-none focus:border-[#D4AF37] rounded-lg disabled:opacity-50"
+                                  required
+                                />
+                              </div>
+
+                              <div className="flex flex-col gap-1">
+                                <label className="text-[8px] uppercase tracking-wider text-gray-500 font-bold">PIN</label>
+                                <input
+                                  type="password"
+                                  inputMode="numeric"
+                                  pattern="\d*"
+                                  maxLength={4}
+                                  value={editingUserPin}
+                                  onChange={(e) => setEditingUserPin(e.target.value.replace(/\D/g, ''))}
+                                  disabled={isAdminAccount}
+                                  className="bg-[#0D0F13] border border-[#2A2A2A] text-[#E5E1DA] px-2.5 py-1 text-xs focus:outline-none focus:border-[#D4AF37] rounded-lg text-center font-mono tracking-[0.3em] disabled:opacity-50"
+                                  required
+                                />
+                              </div>
+
+                              <div className="flex flex-col gap-1">
+                                <label className="text-[8px] uppercase tracking-wider text-gray-500 font-bold">Role</label>
+                                <select
+                                  value={editingUserRole}
+                                  onChange={(e) => setEditingUserRole(e.target.value as 'employee' | 'manager')}
+                                  disabled={isAdminAccount}
+                                  className="bg-[#0D0F13] border border-[#2A2A2A] text-[#E5E1DA] px-2.5 py-1 text-xs focus:outline-none focus:border-[#D4AF37] rounded-lg cursor-pointer disabled:opacity-50"
+                                >
+                                  <option value="employee">Employee</option>
+                                  <option value="manager">Manager</option>
+                                </select>
+                              </div>
+
+                              <div className="flex gap-1">
+                                <button
+                                  type="submit"
+                                  disabled={updatingUser}
+                                  className="flex-1 py-1.5 bg-[#D4AF37] hover:bg-[#E5C25A] text-black rounded-lg text-[10px] font-bold uppercase tracking-wider cursor-pointer active:scale-95 transition-all"
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingUserId(null)}
+                                  className="flex-1 py-1.5 bg-zinc-800 text-gray-400 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wider cursor-pointer active:scale-95 transition-all"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </form>
+                          ) : (
+                            <>
+                              <div className="flex items-center gap-3 min-w-0 text-left">
+                                <div className={`w-8 h-8 rounded-full border flex items-center justify-center font-bold text-xs shrink-0 ${
+                                  emp.isDeleted 
+                                    ? 'bg-zinc-800 border-zinc-700 text-zinc-500' 
+                                    : 'bg-[#D4AF37]/10 border-[#D4AF37]/30 text-[#D4AF37]'
+                                }`}>
+                                  {emp.name.substring(0, 2).toUpperCase()}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap font-sans">
+                                    <span className={`text-xs font-bold ${emp.isDeleted ? 'text-zinc-500 line-through' : 'text-[#E5E1DA]'}`}>
+                                      {emp.name}
+                                    </span>
+                                    <span className="text-[8px] bg-[#2A2A2A] px-1.5 py-0.5 rounded font-mono font-bold uppercase tracking-wider text-gray-400">
+                                      {emp.role || 'employee'}
+                                    </span>
+                                    {emp.isDeleted && (
+                                      <span className="text-[8px] bg-red-500/10 border border-red-500/20 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider text-red-400 text-left">
+                                        Ex-employee
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-[8px] font-mono text-gray-500 tracking-wider block">
+                                    Created: {new Date(emp.createdAt).toLocaleDateString()}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1 shrink-0 opacity-85 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                                {!isAdminAccount && !emp.isDeleted && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingUserId(emp.id);
+                                        setEditingUserName(emp.name);
+                                        setEditingUserPin(emp.pin || '');
+                                        setEditingUserRole(emp.role || 'employee');
+                                      }}
+                                      className="p-1.5 text-gray-400 hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 rounded-lg transition-all cursor-pointer"
+                                      title="Edit user details"
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        if (confirm(`Are you sure you want to delete ${emp.name}?`)) {
+                                          try {
+                                            await db.employees.delete(emp.id);
+                                            toast.info(`${emp.name} marked as ex-employee.`);
+                                            // If current active user got deleted
+                                            if (activeEmployee && activeEmployee.id === emp.id) {
+                                              setActiveEmployee(null);
+                                              sessionStorage.removeItem('active_employee');
+                                            }
+                                          } catch (e) {
+                                            toast.error('Failed to delete user');
+                                          }
+                                        }
+                                      }}
+                                      className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all cursor-pointer"
+                                      title="Soft delete user"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </>
+                                )}
+                                {!isAdminAccount && emp.isDeleted && (
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      try {
+                                        await db.employees.update(emp.id, { isDeleted: false });
+                                        toast.success(`${emp.name} restored to active employees list.`);
+                                      } catch (e) {
+                                        toast.error('Failed to restore user');
+                                      }
+                                    }}
+                                    className="p-1.5 text-gray-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-all cursor-pointer flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider"
+                                    title="Restore user"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                    <span>Restore</span>
+                                  </button>
+                                )}
+                                {isAdminAccount && (
+                                  <span className="text-[9px] font-mono font-bold text-gray-650 px-2 uppercase select-none">System account</span>
+                                )}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Inventory Management Toggle Card */}
@@ -659,14 +1004,30 @@ export function SettingsModal({
               >
                 <div className="border border-[#2A2A2A] bg-[#1A1D24] rounded-2xl p-5 space-y-4">
                   {/* File Metadata Overview */}
-                  <div className="grid grid-cols-2 gap-4 pb-4 border-b border-[#2A2A2A]">
+                  <div className="grid grid-cols-3 gap-3.5 pb-4 border-b border-[#2A2A2A]">
                     <div>
-                      <p className="text-[9px] uppercase tracking-widest text-[#888] font-bold">Backup Items Found</p>
+                      <p className="text-[9px] uppercase tracking-widest text-[#888] font-bold">Items</p>
                       <p className="text-lg font-bold font-mono text-[#D4AF37]">{parsedData.items.length}</p>
                     </div>
                     <div>
-                      <p className="text-[9px] uppercase tracking-widest text-[#888] font-bold">Backup Orders Found</p>
+                      <p className="text-[9px] uppercase tracking-widest text-[#888] font-bold">Orders</p>
                       <p className="text-lg font-bold font-mono text-emerald-500">{(parsedData.orders || []).length}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] uppercase tracking-widest text-[#888] font-bold">Users</p>
+                      <p className="text-lg font-bold font-mono text-blue-400">{(parsedData.employees || []).length}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] uppercase tracking-widest text-[#888] font-bold">Sessions</p>
+                      <p className="text-lg font-bold font-mono text-purple-400">{(parsedData.orderSessions || []).length}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] uppercase tracking-widest text-[#888] font-bold">Notes</p>
+                      <p className="text-lg font-bold font-mono text-rose-400">{(parsedData.personalNotes || []).length}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] uppercase tracking-widest text-[#888] font-bold">Settings</p>
+                      <p className="text-lg font-bold font-mono text-amber-500">{(parsedData.settings || []).length}</p>
                     </div>
                   </div>
 

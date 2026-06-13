@@ -81,7 +81,9 @@ async function ensureTables(sql: any) {
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL UNIQUE,
         pin TEXT NOT NULL,
-        "createdAt" BIGINT NOT NULL
+        "createdAt" BIGINT NOT NULL,
+        role TEXT DEFAULT 'employee',
+        "isDeleted" BOOLEAN DEFAULT FALSE
       )
     `;
   } catch (err) {
@@ -167,7 +169,21 @@ async function ensureTables(sql: any) {
     console.error('Error creating settings table:', err);
   }
 
-  // Ensure role column exists on employees table
+  // Schema for personal_notes table
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS personal_notes (
+        id SERIAL PRIMARY KEY,
+        "employeeId" INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        "createdAt" BIGINT NOT NULL
+      )
+    `;
+  } catch (err) {
+    console.error('Error creating personal_notes table:', err);
+  }
+
+  // Ensure role and isDeleted columns exist on employees table
   try {
     const colsResult = await sql`
       SELECT column_name 
@@ -178,8 +194,11 @@ async function ensureTables(sql: any) {
     if (!cols.includes('role')) {
       await sql`ALTER TABLE employees ADD COLUMN role TEXT DEFAULT 'employee'`;
     }
+    if (!cols.includes('isdeleted')) {
+      await sql`ALTER TABLE employees ADD COLUMN "isDeleted" BOOLEAN DEFAULT FALSE`;
+    }
   } catch (err) {
-    console.error('Error adding role column to employees:', err);
+    console.error('Error adding role or isDeleted column to employees:', err);
   }
 
   // Pre-populate setting default
@@ -306,7 +325,7 @@ export async function POST(req: NextRequest) {
 
     // 2a. Fetch all employees
     if (action === 'getEmployees') {
-      const rows = await sql`SELECT id, name, role, "createdAt" FROM employees ORDER BY name ASC`;
+      const rows = await sql`SELECT id, name, role, "isDeleted", "createdAt" FROM employees ORDER BY name ASC`;
       return NextResponse.json(rows.map(mapDbResult));
     }
 
@@ -315,11 +334,15 @@ export async function POST(req: NextRequest) {
       if (!name || !pin) {
         return NextResponse.json({ error: 'Missing name or pin' }, { status: 400 });
       }
+      const lowerName = name.toLowerCase();
+      if (lowerName === 'admin' && pin !== '8742') {
+        return NextResponse.json({ error: 'Admin PIN must be 8742' }, { status: 400 });
+      }
       const exists = await sql`SELECT id FROM employees WHERE LOWER(name) = LOWER(${name}) LIMIT 1`;
       if (exists.length > 0) {
         return NextResponse.json({ error: 'Employee name already exists' }, { status: 400 });
       }
-      const role = body.role || 'employee';
+      const role = lowerName === 'admin' ? 'manager' : (body.role || 'employee');
       const rows = await sql`
         INSERT INTO employees (name, pin, role, "createdAt")
         VALUES (${name}, ${pin}, ${role}, ${Date.now()})
@@ -333,11 +356,92 @@ export async function POST(req: NextRequest) {
       if (!name || !pin) {
         return NextResponse.json({ error: 'Missing name or pin' }, { status: 400 });
       }
-      const rows = await sql`SELECT id, name, role FROM employees WHERE name = ${name} AND pin = ${pin} LIMIT 1`;
+      const lowerName = name.trim().toLowerCase();
+      if (lowerName === 'admin') {
+        if (pin === '8742') {
+          let rows = await sql`SELECT id, name, role, "isDeleted" FROM employees WHERE LOWER(name) = 'admin' LIMIT 1`;
+          if (rows.length === 0) {
+            const insertRows = await sql`
+              INSERT INTO employees (name, pin, role, "createdAt")
+              VALUES ('Admin', '8742', 'manager', ${Date.now()})
+              RETURNING id, name, role, "createdAt"
+            `;
+            rows = insertRows;
+          } else if (rows[0].isDeleted) {
+            // Restore admin if soft-deleted
+            await sql`UPDATE employees SET "isDeleted" = FALSE WHERE LOWER(name) = 'admin'`;
+            rows[0].isDeleted = false;
+          }
+          return NextResponse.json({ success: true, employee: mapDbResult(rows[0]) });
+        } else {
+          return NextResponse.json({ success: false, error: 'Incorrect PIN' });
+        }
+      }
+      const rows = await sql`SELECT id, name, role FROM employees WHERE LOWER(name) = LOWER(${name.trim()}) AND pin = ${pin} AND ("isDeleted" IS NULL OR "isDeleted" = FALSE) LIMIT 1`;
       if (rows.length === 0) {
         return NextResponse.json({ success: false, error: 'Incorrect PIN' });
       }
       return NextResponse.json({ success: true, employee: mapDbResult(rows[0]) });
+    }
+
+    // 2c.1 Update employee details (admin only)
+    if (action === 'updateEmployee') {
+      const { id, updates } = body;
+      if (!id || !updates) {
+        return NextResponse.json({ error: 'Missing id or updates' }, { status: 400 });
+      }
+      const selectRows = await sql`SELECT * FROM employees WHERE id = ${id} LIMIT 1`;
+      if (selectRows.length === 0) {
+        return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
+      }
+      
+      const existing = selectRows[0];
+      const newName = updates.name !== undefined ? updates.name : existing.name;
+      const newPin = updates.pin !== undefined ? updates.pin : existing.pin;
+      const newRole = updates.role !== undefined ? updates.role : existing.role;
+      const newIsDeleted = updates.isDeleted !== undefined ? updates.isDeleted : existing.isDeleted;
+
+      // Admin verification
+      if (existing.name.toLowerCase() === 'admin') {
+        if (newName.toLowerCase() !== 'admin') {
+          return NextResponse.json({ error: 'Cannot rename Admin account' }, { status: 400 });
+        }
+        if (newPin !== '8742') {
+          return NextResponse.json({ error: 'Admin PIN must be 8742' }, { status: 400 });
+        }
+        if (newIsDeleted === true) {
+          return NextResponse.json({ error: 'Admin account cannot be deleted' }, { status: 400 });
+        }
+      }
+
+      const updateRows = await sql`
+        UPDATE employees
+        SET
+          name = ${newName},
+          pin = ${newPin},
+          role = ${newRole},
+          "isDeleted" = ${newIsDeleted}
+        WHERE id = ${id}
+        RETURNING id, name, role, "isDeleted", "createdAt"
+      `;
+      return NextResponse.json(mapDbResult(updateRows[0]));
+    }
+
+    // 2c.2 Soft delete employee (admin only)
+    if (action === 'deleteEmployee') {
+      const { id } = body;
+      if (!id) {
+        return NextResponse.json({ error: 'Missing id' }, { status: 400 });
+      }
+      const selectRows = await sql`SELECT name FROM employees WHERE id = ${id} LIMIT 1`;
+      if (selectRows.length === 0) {
+        return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
+      }
+      if (selectRows[0].name.toLowerCase() === 'admin') {
+        return NextResponse.json({ error: 'Admin account cannot be deleted' }, { status: 400 });
+      }
+      await sql`UPDATE employees SET "isDeleted" = TRUE WHERE id = ${id}`;
+      return NextResponse.json({ success: true });
     }
 
     // 2d. Complete active list of orders
@@ -379,6 +483,66 @@ export async function POST(req: NextRequest) {
     if (action === 'getOrderSessions') {
       const rows = await sql`SELECT * FROM order_sessions ORDER BY "completedAt" DESC`;
       return NextResponse.json(rows.map(mapDbResult));
+    }
+
+    // 2f. Fetch personal notes for a specific employeeId
+    if (action === 'getPersonalNotes') {
+      const { employeeId } = body;
+      if (!employeeId) {
+        return NextResponse.json({ error: 'Missing employeeId' }, { status: 400 });
+      }
+      const rows = await sql`
+        SELECT id, "employeeId", content, "createdAt"
+        FROM personal_notes
+        WHERE "employeeId" = ${employeeId}
+        ORDER BY "createdAt" DESC
+      `;
+      return NextResponse.json(rows.map(mapDbResult));
+    }
+
+    // 2g. Add a personal note
+    if (action === 'addPersonalNote') {
+      const { employeeId, content } = body;
+      if (!employeeId || !content) {
+        return NextResponse.json({ error: 'Missing employeeId or content' }, { status: 400 });
+      }
+      const rows = await sql`
+        INSERT INTO personal_notes ("employeeId", content, "createdAt")
+        VALUES (${employeeId}, ${content}, ${Date.now()})
+        RETURNING *
+      `;
+      return NextResponse.json(mapDbResult(rows[0]));
+    }
+
+    // 2h. Delete a personal note
+    if (action === 'deletePersonalNote') {
+      const { id, employeeId } = body;
+      if (!id || !employeeId) {
+        return NextResponse.json({ error: 'Missing id or employeeId' }, { status: 400 });
+      }
+      await sql`
+        DELETE FROM personal_notes
+        WHERE id = ${id} AND "employeeId" = ${employeeId}
+      `;
+      return NextResponse.json({ success: true });
+    }
+
+    // 2i. Update a personal note
+    if (action === 'updatePersonalNote') {
+      const { id, employeeId, content } = body;
+      if (!id || !employeeId || !content) {
+        return NextResponse.json({ error: 'Missing id, employeeId, or content' }, { status: 400 });
+      }
+      const rows = await sql`
+        UPDATE personal_notes
+        SET content = ${content}
+        WHERE id = ${id} AND "employeeId" = ${employeeId}
+        RETURNING *
+      `;
+      if (rows.length === 0) {
+        return NextResponse.json({ error: 'Note not found or unauthorized' }, { status: 404 });
+      }
+      return NextResponse.json(mapDbResult(rows[0]));
     }
 
     // 3. Find unique item by barcode (excluding image)
@@ -794,11 +958,277 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // 11b. Fetch complete backup data (admin only)
+    if (action === 'getCompleteBackupData') {
+      const items = await sql`SELECT * FROM items ORDER BY id DESC`;
+      const orders = await sql`SELECT * FROM orders ORDER BY id DESC`;
+      const employees = await sql`SELECT id, name, pin, role, "isDeleted", "createdAt" FROM employees ORDER BY name ASC`;
+      const orderSessions = await sql`SELECT * FROM order_sessions ORDER BY "completedAt" DESC`;
+      const settings = await sql`SELECT * FROM settings`;
+      const personalNotes = await sql`SELECT * FROM personal_notes ORDER BY id DESC`;
+
+      return NextResponse.json({
+        items: items.map(mapDbResult),
+        orders: orders.map(mapDbResult),
+        employees: employees.map(mapDbResult),
+        orderSessions: orderSessions.map(mapDbResult),
+        settings: settings.map(mapDbResult),
+        personalNotes: personalNotes.map(mapDbResult)
+      });
+    }
+
+    // 11c. Complete bulk import backup
+    if (action === 'bulkImportBackup') {
+      const { items: backupItems, orders: backupOrders, employees: backupEmployees, orderSessions: backupSessions, settings: backupSettings, personalNotes: backupNotes, conflictStrategy } = body;
+
+      // 1. Process items
+      let itemsCount = 0;
+      if (Array.isArray(backupItems)) {
+        const activeRows = await sql`SELECT * FROM items`;
+        for (const incoming of backupItems) {
+          let existing = null;
+          if (incoming.barcode) {
+            existing = activeRows.find(r => r.barcode === incoming.barcode);
+          } else {
+            existing = activeRows.find(r => 
+              r.brand.toLowerCase() === incoming.brand.toLowerCase() &&
+              r.flavor.toLowerCase() === incoming.flavor.toLowerCase() &&
+              r.packType.toLowerCase() === incoming.packType.toLowerCase()
+            );
+          }
+
+          if (existing) {
+            if (conflictStrategy === 'overwrite') {
+              const quantity = parseInt(incoming.quantity, 10) || 0;
+              const reorderThreshold = parseInt(incoming.reorderThreshold, 10) || 10;
+              const boxSize = parseInt(incoming.boxSize, 10) || parseInt(existing.boxSize, 10) || 15;
+              const price = parseFloat(incoming.price) || 0.00;
+              await sql`
+                UPDATE items 
+                SET 
+                  category = ${incoming.category || existing.category}, 
+                  brand = ${incoming.brand}, 
+                  flavor = ${incoming.flavor}, 
+                  "packType" = ${incoming.packType || existing.packType}, 
+                  quantity = ${quantity}, 
+                  "reorderThreshold" = ${reorderThreshold}, 
+                  "boxSize" = ${boxSize},
+                  image = ${incoming.image !== undefined ? incoming.image : existing.image}, 
+                  price = ${price}, 
+                  flag = ${incoming.flag !== undefined ? incoming.flag : existing.flag},
+                  "updatedAt" = ${Date.now()}
+                WHERE id = ${existing.id}
+              `;
+            } else if (conflictStrategy === 'merge') {
+              const newQuantity = (parseInt(existing.quantity, 10) || 0) + (parseInt(incoming.quantity, 10) || 0);
+              await sql`
+                UPDATE items 
+                SET 
+                  quantity = ${newQuantity}, 
+                  "updatedAt" = ${Date.now()}
+                WHERE id = ${existing.id}
+              `;
+            }
+          } else {
+            const quantity = parseInt(incoming.quantity, 10) || 0;
+            const reorderThreshold = parseInt(incoming.reorderThreshold, 10) || 10;
+            const boxSize = parseInt(incoming.boxSize, 10) || 15;
+            const price = parseFloat(incoming.price) || 0.00;
+            await sql`
+              INSERT INTO items (category, brand, flavor, "packType", quantity, "reorderThreshold", "boxSize", image, barcode, price, flag, "updatedAt")
+              VALUES (
+                ${incoming.category || 'Cigarillos'}, 
+                ${incoming.brand}, 
+                ${incoming.flavor}, 
+                ${incoming.packType || 'Single'}, 
+                ${quantity}, 
+                ${reorderThreshold}, 
+                ${boxSize},
+                ${incoming.image || null}, 
+                ${incoming.barcode || null}, 
+                ${price}, 
+                ${incoming.flag || null},
+                ${Date.now()}
+              )
+            `;
+          }
+        }
+        itemsCount = backupItems.length;
+      }
+
+      // 2. Process orders
+      let ordersCount = 0;
+      if (Array.isArray(backupOrders)) {
+        if (conflictStrategy === 'overwrite') {
+          await sql`DELETE FROM orders`;
+        }
+        const activeOrders = conflictStrategy === 'overwrite' ? [] : await sql`SELECT * FROM orders`;
+        
+        for (const incoming of backupOrders) {
+          const exists = activeOrders.some(r => 
+            r.brand.toLowerCase() === incoming.brand.toLowerCase() &&
+            r.flavor.toLowerCase() === incoming.flavor.toLowerCase() &&
+            Number(r.createdAt) === Number(incoming.createdAt) &&
+            parseInt(r.quantity, 10) === parseInt(incoming.quantity, 10)
+          );
+
+          if (!exists) {
+            await sql`
+              INSERT INTO orders (
+                "inventoryId", category, brand, flavor, "packType", quantity, status, "createdAt",
+                "addedBy", "completedBy", "completedAt", "listId", urgency, timeframe, "estimatedPrice",
+                notes, "approvedBy", "approvedAt", "receivedBy", "receivedAt"
+              )
+              VALUES (
+                ${incoming.inventoryId || null}, 
+                ${incoming.category || 'Cigarillos'}, 
+                ${incoming.brand}, 
+                ${incoming.flavor}, 
+                ${incoming.packType || 'Single'}, 
+                ${parseInt(incoming.quantity, 10) || 1}, 
+                ${incoming.status || 'pending'}, 
+                ${incoming.createdAt || Date.now()},
+                ${incoming.addedBy || null},
+                ${incoming.completedBy || null},
+                ${incoming.completedAt || null},
+                ${incoming.listId || null},
+                ${incoming.urgency || 'medium'},
+                ${incoming.timeframe || '1week'},
+                ${incoming.estimatedPrice !== undefined && incoming.estimatedPrice !== null ? parseFloat(incoming.estimatedPrice) : null},
+                ${incoming.notes || null},
+                ${incoming.approvedBy || null},
+                ${incoming.approvedAt || null},
+                ${incoming.receivedBy || null},
+                ${incoming.receivedAt || null}
+              )
+            `;
+            ordersCount++;
+          }
+        }
+      }
+
+      // 3. Process employees
+      let employeesCount = 0;
+      if (Array.isArray(backupEmployees)) {
+        if (conflictStrategy === 'overwrite') {
+          // Keep admin accounts, delete other employees
+          await sql`DELETE FROM employees WHERE LOWER(name) <> 'admin'`;
+        }
+        const activeEmployees = await sql`SELECT * FROM employees`;
+
+        for (const incoming of backupEmployees) {
+          if (incoming.name.toLowerCase() === 'admin') {
+            continue;
+          }
+          const existing = activeEmployees.find(r => r.name.toLowerCase() === incoming.name.toLowerCase());
+
+          if (existing) {
+            if (conflictStrategy === 'overwrite') {
+              await sql`
+                UPDATE employees
+                SET 
+                  pin = ${incoming.pin},
+                  role = ${incoming.role || 'employee'},
+                  "isDeleted" = ${incoming.isDeleted || false},
+                  "createdAt" = ${incoming.createdAt || Date.now()}
+                WHERE id = ${existing.id}
+              `;
+              employeesCount++;
+            }
+          } else {
+            await sql`
+              INSERT INTO employees (id, name, pin, role, "isDeleted", "createdAt")
+              VALUES (${incoming.id}, ${incoming.name}, ${incoming.pin}, ${incoming.role || 'employee'}, ${incoming.isDeleted || false}, ${incoming.createdAt || Date.now()})
+            `;
+            employeesCount++;
+          }
+        }
+      }
+
+      // 4. Process order sessions
+      let sessionsCount = 0;
+      if (Array.isArray(backupSessions)) {
+        if (conflictStrategy === 'overwrite') {
+          await sql`DELETE FROM order_sessions`;
+        }
+        const activeSessions = conflictStrategy === 'overwrite' ? [] : await sql`SELECT * FROM order_sessions`;
+
+        for (const incoming of backupSessions) {
+          const exists = activeSessions.some(r => r.listId === incoming.listId);
+          if (!exists) {
+            await sql`
+              INSERT INTO order_sessions ("listId", "sessionName", "vendorName", "completedBy", "completedAt", notes)
+              VALUES (${incoming.listId}, ${incoming.sessionName || 'Restock Batch'}, ${incoming.vendorName || null}, ${incoming.completedBy || 'System'}, ${incoming.completedAt || Date.now()}, ${incoming.notes || null})
+            `;
+            sessionsCount++;
+          }
+        }
+      }
+
+      // 5. Process settings
+      let settingsCount = 0;
+      if (Array.isArray(backupSettings)) {
+        for (const incoming of backupSettings) {
+          await sql`
+            INSERT INTO settings (key, value, "updatedBy", "updatedAt")
+            VALUES (${incoming.key}, ${incoming.value}, ${incoming.updatedBy || 'System'}, ${incoming.updatedAt || Date.now()})
+            ON CONFLICT (key)
+            DO UPDATE SET 
+              value = EXCLUDED.value,
+              "updatedBy" = EXCLUDED."updatedBy",
+              "updatedAt" = EXCLUDED."updatedAt"
+          `;
+          settingsCount++;
+        }
+      }
+
+      // 6. Process personal notes
+      let notesCount = 0;
+      if (Array.isArray(backupNotes)) {
+        if (conflictStrategy === 'overwrite') {
+          await sql`DELETE FROM personal_notes`;
+        }
+        
+        for (const incoming of backupNotes) {
+          // Double check if referenced employee exists
+          const empExists = await sql`SELECT id FROM employees WHERE id = ${incoming.employeeId} LIMIT 1`;
+          if (empExists.length > 0) {
+            await sql`
+              INSERT INTO personal_notes (id, "employeeId", content, "createdAt")
+              VALUES (${incoming.id}, ${incoming.employeeId}, ${incoming.content}, ${incoming.createdAt || Date.now()})
+            `;
+            notesCount++;
+          }
+        }
+      }
+
+      // 7. Reset sequences in Postgres
+      try {
+        await sql`SELECT setval('employees_id_seq', COALESCE((SELECT MAX(id)+1 FROM employees), 1), false)`;
+        await sql`SELECT setval('personal_notes_id_seq', COALESCE((SELECT MAX(id)+1 FROM personal_notes), 1), false)`;
+        await sql`SELECT setval('orders_id_seq', COALESCE((SELECT MAX(id)+1 FROM orders), 1), false)`;
+      } catch (seqErr) {
+        console.error('Error resetting sequence IDs:', seqErr);
+      }
+
+      return NextResponse.json({
+        success: true,
+        itemsCount,
+        ordersCount,
+        employeesCount,
+        sessionsCount,
+        settingsCount,
+        notesCount
+      });
+    }
+
     // 12. Wipe all tables
     if (action === 'wipeDatabase') {
       await sql`DELETE FROM items`;
       await sql`DELETE FROM orders`;
       await sql`DELETE FROM employees`;
+      await sql`DELETE FROM personal_notes`;
+      await sql`DELETE FROM order_sessions`;
       await sql`UPDATE settings SET value = 'false', "updatedBy" = 'System', "updatedAt" = ${Date.now()} WHERE key IN ('isInventoryDisabled', 'isPurchasingDisabled')`;
       return NextResponse.json({ success: true });
     }

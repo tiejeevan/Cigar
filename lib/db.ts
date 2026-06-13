@@ -41,6 +41,8 @@ export interface Employee {
   name: string;
   role: 'employee' | 'manager';
   createdAt: number;
+  isDeleted?: boolean;
+  pin?: string;
 }
 
 export interface SettingItem {
@@ -82,6 +84,13 @@ export interface OrderSession {
   completedBy: string;
   completedAt: number;
   notes?: string;
+}
+
+export interface PersonalNote {
+  id: number;
+  employeeId: number;
+  content: string;
+  createdAt: number;
 }
 
 // Simple event-target to notify subscribers when any mutation is completed locally
@@ -227,6 +236,27 @@ export const db = {
       return (res || []) as OrderSession[];
     }
   },
+  personalNotes: {
+    list: async (employeeId: number) => {
+      const res = await apiCall({ action: 'getPersonalNotes', employeeId });
+      return (res || []) as PersonalNote[];
+    },
+    add: async (employeeId: number, content: string) => {
+      const res = await apiCall({ action: 'addPersonalNote', employeeId, content });
+      notifyDbChanged();
+      return res as PersonalNote;
+    },
+    delete: async (id: number, employeeId: number) => {
+      const res = await apiCall({ action: 'deletePersonalNote', id, employeeId });
+      notifyDbChanged();
+      return res;
+    },
+    update: async (id: number, employeeId: number, content: string) => {
+      const res = await apiCall({ action: 'updatePersonalNote', id, employeeId, content });
+      notifyDbChanged();
+      return res as PersonalNote;
+    }
+  },
   employees: {
     list: async () => {
       const res = await apiCall({ action: 'getEmployees' });
@@ -238,6 +268,16 @@ export const db = {
     },
     verifyPin: async (name: string, pin: string) => {
       const res = await apiCall({ action: 'verifyEmployeePin', name, pin });
+      return res;
+    },
+    update: async (id: number, updates: Partial<Employee>) => {
+      const res = await apiCall({ action: 'updateEmployee', id, updates });
+      notifyDbChanged();
+      return res;
+    },
+    delete: async (id: number) => {
+      const res = await apiCall({ action: 'deleteEmployee', id });
+      notifyDbChanged();
       return res;
     }
   },
@@ -272,14 +312,16 @@ export const db = {
     }
   },
   exportBackupData: async () => {
-    const res = await apiCall({ action: 'getItemsWithImages' });
-    const items = (res || []) as InventoryItem[];
-    const orders = await db.orders.toArray();
+    const res = await apiCall({ action: 'getCompleteBackupData' });
     return {
-      version: '1.0',
+      version: '1.1',
       exportTimestamp: Date.now(),
-      items,
-      orders
+      items: res?.items || [],
+      orders: res?.orders || [],
+      employees: res?.employees || [],
+      orderSessions: res?.orderSessions || [],
+      settings: res?.settings || [],
+      personalNotes: res?.personalNotes || []
     };
   },
   importBackupData: async (backupData: any, conflictStrategy: 'overwrite' | 'merge' | 'skip') => {
@@ -289,26 +331,28 @@ export const db = {
     if (!Array.isArray(backupData.items)) {
       throw new Error('Backup data items must be an array');
     }
-    if (backupData.orders && !Array.isArray(backupData.orders)) {
-      throw new Error('Backup data orders must be an array');
-    }
 
-    const itemsResult = await apiCall({ 
-      action: 'bulkUpsertItems', 
-      items: backupData.items, 
-      conflictStrategy 
+    const result = await apiCall({
+      action: 'bulkImportBackup',
+      items: backupData.items,
+      orders: backupData.orders || [],
+      employees: backupData.employees || [],
+      orderSessions: backupData.orderSessions || [],
+      settings: backupData.settings || [],
+      personalNotes: backupData.personalNotes || [],
+      conflictStrategy
     });
-
-    const ordersResult = backupData.orders && backupData.orders.length > 0
-      ? await apiCall({ action: 'bulkInsertOrders', orders: backupData.orders })
-      : { success: true };
 
     notifyDbChanged();
 
     return {
-      itemsCount: backupData.items.length,
-      ordersCount: (backupData.orders || []).length,
-      success: !!(itemsResult?.success && ordersResult?.success)
+      itemsCount: result?.itemsCount || 0,
+      ordersCount: result?.ordersCount || 0,
+      employeesCount: result?.employeesCount || 0,
+      sessionsCount: result?.sessionsCount || 0,
+      settingsCount: result?.settingsCount || 0,
+      notesCount: result?.notesCount || 0,
+      success: !!result?.success
     };
   },
   wipeDatabase: async () => {

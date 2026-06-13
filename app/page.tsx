@@ -144,15 +144,17 @@ export default function Home() {
               )}
 
               {/* Settings button */}
-              <button
-                onClick={() => setShowSettings(true)}
-                className="flex items-center gap-2 px-3 py-2 bg-[#14161C] border border-[#2A2A2A] hover:border-[#D4AF37]/50 rounded-xl text-gray-300 hover:text-white transition-all duration-300 font-semibold text-xs uppercase tracking-wider active:scale-95 shadow-md cursor-pointer"
-                title="Open Settings"
-                aria-label="Settings"
-              >
-                <Settings className="w-4 h-4 text-[#D4AF37]" />
-                <span className="hidden sm:inline">Settings</span>
-              </button>
+              {activeEmployee && activeEmployee.name.toLowerCase() === 'admin' && (
+                <button
+                  onClick={() => setShowSettings(true)}
+                  className="flex items-center gap-2 px-3 py-2 bg-[#14161C] border border-[#2A2A2A] hover:border-[#D4AF37]/50 rounded-xl text-gray-300 hover:text-white transition-all duration-300 font-semibold text-xs uppercase tracking-wider active:scale-95 shadow-md cursor-pointer"
+                  title="Open Settings"
+                  aria-label="Settings"
+                >
+                  <Settings className="w-4 h-4 text-[#D4AF37]" />
+                  <span className="hidden sm:inline">Settings</span>
+                </button>
+              )}
             </div>
           </header>
         )}

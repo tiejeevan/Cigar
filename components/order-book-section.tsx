@@ -1,14 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { db, useLiveQuery, OrderItem, Employee, OrderSession } from '@/lib/db';
+import { db, useLiveQuery, OrderItem, Employee, OrderSession, PersonalNote } from '@/lib/db';
 import { PRODUCT_CATEGORIES } from '@/lib/constants';
 import { OrderHistorySection } from '@/components/order-history-section';
 import {
   BookOpen, Search, Trash2, Calendar, User, Key, Lock, Unlock,
   Plus, CheckCircle, Clock, ShoppingCart, UserCheck, ChevronDown, ChevronUp,
   Sparkles, Package, Flame, Eye, ShieldAlert, Edit2, Check, X,
-  ClipboardCopy, ListPlus, CheckSquare, Filter, DollarSign
+  ClipboardCopy, ListPlus, CheckSquare, Filter, DollarSign, StickyNote
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -60,11 +60,25 @@ export function OrderBookSection({
     return <Package className="w-4 h-4 text-zinc-400 shrink-0" />;
   };
 
-  // Reactive query of employees, orders, inventory items, and database sessions
+  // Reactive query of employees, orders, inventory items, database sessions, and personal notes
   const employees = useLiveQuery(() => db.employees.list(), []) || [];
   const orders = useLiveQuery(() => db.orders.toArray(), []) || [];
   const items = useLiveQuery(() => db.items.toArray(), []) || [];
   const orderSessions = useLiveQuery(() => db.orderSessions.list(), []) || [];
+  const personalNotes = useLiveQuery(
+    () => activeEmployee ? db.personalNotes.list(activeEmployee.id) : Promise.resolve([]),
+    [activeEmployee]
+  ) || [];
+
+  const getEmployeeDisplayName = (name: string | null | undefined) => {
+    if (!name) return '';
+    if (name === 'System' || name.toLowerCase() === 'admin') return name;
+    const found = employees.find(e => e.name.toLowerCase() === name.toLowerCase());
+    if (found && found.isDeleted) {
+      return `${found.name} (Ex-employee)`;
+    }
+    return name;
+  };
 
   // Selected Order Detail Modal State
   const [selectedOrderDetailId, setSelectedOrderDetailId] = useState<number | null>(null);
@@ -232,7 +246,11 @@ export function OrderBookSection({
   // Search & Collapsing
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  const [activeTab, setActiveTab] = useState<'orders' | 'history'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'history' | 'notes'>('orders');
+  const [showAddNote, setShowAddNote] = useState(false);
+  const [newNoteContent, setNewNoteContent] = useState('');
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+  const [editingNoteContent, setEditingNoteContent] = useState('');
   const [showAddItemModal, setShowAddItemModal] = useState(false);
 
   // Active items selection for shopping completion
@@ -240,12 +258,7 @@ export function OrderBookSection({
 
 
 
-  // Set default login dropdown name
-  useEffect(() => {
-    if (employees.length > 0 && !loginName) {
-      setLoginName(employees[0].name);
-    }
-  }, [employees, loginName]);
+
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -285,9 +298,9 @@ export function OrderBookSection({
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const targetName = loginName || (employees[0] ? employees[0].name : '');
+    const targetName = loginName.trim();
     if (!targetName) {
-      toast.error('Please select or create an employee profile first');
+      toast.error('Please enter your employee name');
       return;
     }
     if (!/^\d{4}$/.test(loginPin)) {
@@ -771,22 +784,15 @@ export function OrderBookSection({
           {authMode === 'login' ? (
             <form onSubmit={handleLogin} className="space-y-5">
               <div className="space-y-2">
-                <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Select Employee</label>
-                {employees.length === 0 ? (
-                  <div className="text-xs text-yellow-500 bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-3.5 leading-relaxed">
-                    No employee profiles registered yet. Please click the <strong>"Setup PIN"</strong> tab to create one.
-                  </div>
-                ) : (
-                  <select
-                    value={loginName}
-                    onChange={(e) => setLoginName(e.target.value)}
-                    className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3.5 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl appearance-none cursor-pointer"
-                  >
-                    {employees.map(e => (
-                      <option key={e.id} value={e.name}>{e.name} ({e.role || 'Employee'})</option>
-                    ))}
-                  </select>
-                )}
+                <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Employee Name</label>
+                <input
+                  type="text"
+                  value={loginName}
+                  onChange={(e) => setLoginName(e.target.value)}
+                  placeholder="Enter employee name..."
+                  className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3.5 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl placeholder-gray-650"
+                  required
+                />
               </div>
 
               <div className="space-y-2">
@@ -809,8 +815,7 @@ export function OrderBookSection({
 
               <button
                 type="submit"
-                disabled={employees.length === 0}
-                className="w-full mt-4 bg-[#D4AF37] disabled:bg-gray-700 text-black py-3.5 rounded-xl font-bold uppercase tracking-widest text-xs shadow-lg hover:bg-[#E5C25A] active:bg-[#B3932E] transition-all cursor-pointer"
+                className="w-full mt-4 bg-[#D4AF37] text-black py-3.5 rounded-xl font-bold uppercase tracking-widest text-xs shadow-lg hover:bg-[#E5C25A] active:bg-[#B3932E] transition-all cursor-pointer"
               >
                 Authenticate
               </button>
@@ -928,21 +933,34 @@ export function OrderBookSection({
                 <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#D4AF37] rounded-full animate-in fade-in zoom-in duration-300" />
               )}
             </button>
-          </div>
-
-          {/* ===== ADD ITEM BUTTON ===== */}
-          <div className="flex justify-center w-full">
             <button
-              onClick={() => setShowAddItemModal(true)}
-              className="add-item-btn-shimmer w-[80%] py-3.5 bg-gradient-to-r from-[#D4AF37] via-[#E5C25A] to-[#D4AF37] text-black rounded-2xl font-bold uppercase tracking-[0.2em] text-sm shadow-lg shadow-[#D4AF37]/20 hover:shadow-[#D4AF37]/40 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 cursor-pointer flex items-center justify-center gap-2.5"
+              onClick={() => setActiveTab('notes')}
+              className={`pb-2.5 text-sm font-serif font-bold tracking-wide transition-all relative flex items-center gap-2 cursor-pointer ${activeTab === 'notes' ? 'text-[#D4AF37]' : 'text-gray-400 hover:text-white'
+                }`}
             >
-              <Plus className="w-5 h-5" />
-              Add Item
+              <StickyNote className="w-4 h-4" />
+              <span>Notes</span>
+              {activeTab === 'notes' && (
+                <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#D4AF37] rounded-full animate-in fade-in zoom-in duration-300" />
+              )}
             </button>
           </div>
 
+          {/* ===== ADD ITEM BUTTON ===== */}
+          {activeTab === 'orders' && (
+            <div className="flex justify-center w-full">
+              <button
+                onClick={() => setShowAddItemModal(true)}
+                className="add-item-btn-shimmer w-[80%] py-3.5 bg-gradient-to-r from-[#D4AF37] via-[#E5C25A] to-[#D4AF37] text-black rounded-2xl font-bold uppercase tracking-[0.2em] text-sm shadow-lg shadow-[#D4AF37]/20 hover:shadow-[#D4AF37]/40 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 cursor-pointer flex items-center justify-center gap-2.5"
+              >
+                <Plus className="w-5 h-5" />
+                Add Item
+              </button>
+            </div>
+          )}
+
           {/* Active Filters Calculations */}
-          {(() => {
+          {activeTab !== 'notes' && (() => {
             const activeFiltersCount =
               (filterStatus !== 'pending-approved' ? 1 : 0) +
               (filterUrgency !== 'all' ? 1 : 0) +
@@ -1514,12 +1532,179 @@ export function OrderBookSection({
                 );
               })()}
             </>
-          ) : (
+          ) : activeTab === 'history' ? (
             <OrderHistorySection 
               searchQuery={searchQuery} 
               onViewDetails={openOrderDetailModal} 
               onQuickOrder={handleQuickOrder} 
             />
+          ) : (
+            <div className="flex flex-col gap-4 w-full animate-in fade-in duration-300">
+              {/* Privacy Warning Banner - Ultra compact */}
+              <div className="bg-[#D4AF37]/5 border border-[#D4AF37]/15 rounded-xl px-3 py-2 flex items-center gap-2.5 backdrop-blur-sm">
+                <Lock className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                <span className="text-[10px] text-gray-400 leading-normal">
+                  Only you (logged in as <strong className="text-white font-semibold">{activeEmployee?.name}</strong>) can see your personal notes.
+                </span>
+              </div>
+
+              {/* Notes Container */}
+              <div className="bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl p-4 shadow-lg flex flex-col gap-4">
+                {/* Header Row */}
+                <div className="flex justify-between items-center border-b border-[#2A2A2A] pb-2">
+                  <h3 className="font-serif text-sm font-bold text-[#E5E1DA] flex items-center gap-2">
+                    <StickyNote className="w-4 h-4 text-[#D4AF37]" />
+                    <span>My Notes ({personalNotes.length})</span>
+                  </h3>
+                </div>
+
+                {/* Inline Quick Add Note Input - Mobile First & Space Saving */}
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!newNoteContent.trim()) {
+                      toast.error('Note content cannot be empty');
+                      return;
+                    }
+                    if (!activeEmployee) return;
+                    try {
+                      await db.personalNotes.add(activeEmployee.id, newNoteContent.trim());
+                      toast.success('Note saved');
+                      setNewNoteContent('');
+                    } catch (err) {
+                      toast.error('Failed to save note');
+                    }
+                  }}
+                  className="flex gap-2 w-full bg-[#14161C]/30 p-1.5 border border-[#2A2A2A] rounded-xl focus-within:border-[#D4AF37] transition-all"
+                >
+                  <input
+                    type="text"
+                    value={newNoteContent}
+                    onChange={(e) => setNewNoteContent(e.target.value)}
+                    placeholder="Add a private note..."
+                    className="flex-1 bg-transparent text-[#E5E1DA] px-2.5 py-1.5 text-xs focus:outline-none placeholder-gray-650 font-sans"
+                  />
+                  <button
+                    type="submit"
+                    className="p-1.5 bg-[#D4AF37] hover:bg-[#E5C25A] text-black rounded-lg hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center justify-center shrink-0"
+                    title="Save note"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </form>
+
+                {/* Notes List */}
+                {personalNotes.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8 px-4 border border-dashed border-[#2A2A2A] rounded-xl bg-[#14161C]/10 text-center">
+                    <StickyNote className="w-6 h-6 text-gray-600 mb-2" />
+                    <p className="text-[11px] font-bold text-gray-400">No notes found</p>
+                    <p className="text-[9px] text-gray-500 mt-0.5 max-w-[180px]">
+                      Add quick reminders, lists, or private thoughts above.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2 max-h-[400px] overflow-y-auto pr-1">
+                    {personalNotes.map((note) => (
+                      <div
+                        key={note.id}
+                        className="group flex justify-between items-center gap-3 p-3 bg-[#14161C] hover:bg-[#1A1C23] border border-[#2A2A2A] hover:border-[#2f323a] rounded-xl transition-all duration-200"
+                      >
+                        {editingNoteId === note.id ? (
+                          <form
+                            onSubmit={async (e) => {
+                              e.preventDefault();
+                              if (!editingNoteContent.trim()) {
+                                toast.error('Note content cannot be empty');
+                                return;
+                              }
+                              if (!activeEmployee) return;
+                              try {
+                                await db.personalNotes.update(note.id, activeEmployee.id, editingNoteContent.trim());
+                                toast.success('Note updated');
+                                setEditingNoteId(null);
+                                setEditingNoteContent('');
+                              } catch (err) {
+                                toast.error('Failed to update note');
+                              }
+                            }}
+                            className="flex-1 flex gap-2 animate-in fade-in duration-200"
+                          >
+                            <input
+                              type="text"
+                              value={editingNoteContent}
+                              onChange={(e) => setEditingNoteContent(e.target.value)}
+                              className="flex-1 bg-[#0D0F13] border border-[#D4AF37]/50 text-[#E5E1DA] px-2.5 py-1 text-xs focus:outline-none rounded-lg font-sans"
+                              autoFocus
+                            />
+                            <button
+                              type="submit"
+                              className="p-1 bg-[#D4AF37] hover:bg-[#E5C25A] text-black rounded-lg cursor-pointer flex items-center justify-center shrink-0"
+                              title="Save changes"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingNoteId(null);
+                                setEditingNoteContent('');
+                              }}
+                              className="p-1 bg-zinc-800 text-gray-400 hover:text-white rounded-lg cursor-pointer flex items-center justify-center shrink-0"
+                              title="Cancel"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </form>
+                        ) : (
+                          <>
+                            <div className="flex flex-col gap-1 min-w-0 flex-1">
+                              <p className="text-xs text-gray-300 whitespace-pre-wrap break-words leading-relaxed font-serif">
+                                {note.content}
+                              </p>
+                              <span className="text-[8px] font-semibold text-gray-500 font-mono tracking-wider uppercase">
+                                {new Date(note.createdAt).toLocaleString(undefined, {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0 opacity-80 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => {
+                                  setEditingNoteId(note.id);
+                                  setEditingNoteContent(note.content);
+                                }}
+                                className="p-1 text-gray-400 hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 rounded-lg transition-all cursor-pointer"
+                                title="Edit note"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (!activeEmployee) return;
+                                  try {
+                                    await db.personalNotes.delete(note.id, activeEmployee.id);
+                                    toast.info('Note deleted');
+                                  } catch (err) {
+                                    toast.error('Failed to delete note');
+                                  }
+                                }}
+                                className="p-1 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all cursor-pointer"
+                                title="Delete note"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           )}
 
       {/* ============== FUTURISTIC ADD ITEM MODAL ============== */}
@@ -1995,7 +2180,7 @@ export function OrderBookSection({
                   <div className="space-y-1.5 border-t border-[#2A2A2A]/40 pt-3 text-[10px] text-gray-500 font-semibold space-y-2 text-left">
                     <div className="flex items-center gap-1.5">
                       <User className="w-3.5 h-3.5 text-[#D4AF37]" />
-                      <span>Logged by: <strong className="text-gray-400">{selectedOrderDetail.addedBy || 'System'}</strong></span>
+                      <span>Logged by: <strong className="text-gray-400">{getEmployeeDisplayName(selectedOrderDetail.addedBy) || 'System'}</strong></span>
                       <span className="opacity-55">•</span>
                       <span className="font-mono">{formatDateTime(selectedOrderDetail.createdAt)}</span>
                     </div>
@@ -2003,7 +2188,7 @@ export function OrderBookSection({
                     {selectedOrderDetail.approvedBy && (
                       <div className="flex items-center gap-1.5 text-amber-500">
                         <CheckSquare className="w-3.5 h-3.5 text-amber-500" />
-                        <span>Approved by: <strong className="text-amber-400">{selectedOrderDetail.approvedBy}</strong></span>
+                        <span>Approved by: <strong className="text-amber-400">{getEmployeeDisplayName(selectedOrderDetail.approvedBy)}</strong></span>
                         <span className="opacity-55">•</span>
                         <span className="font-mono">{formatDateTime(selectedOrderDetail.approvedAt || 0)}</span>
                       </div>
@@ -2012,7 +2197,7 @@ export function OrderBookSection({
                     {selectedOrderDetail.receivedBy && (
                       <div className="flex items-center gap-1.5 text-blue-400">
                         <Package className="w-3.5 h-3.5 text-blue-400" />
-                        <span>Received by: <strong className="text-blue-400">{selectedOrderDetail.receivedBy}</strong></span>
+                        <span>Received by: <strong className="text-blue-400">{getEmployeeDisplayName(selectedOrderDetail.receivedBy)}</strong></span>
                         <span className="opacity-55">•</span>
                         <span className="font-mono">{formatDateTime(selectedOrderDetail.receivedAt || 0)}</span>
                       </div>

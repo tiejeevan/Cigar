@@ -12,8 +12,19 @@ interface OrderHistorySectionProps {
 
 export function OrderHistorySection({ searchQuery, onViewDetails, onQuickOrder }: OrderHistorySectionProps) {
   // Queries
+  const employees = useLiveQuery(() => db.employees.list(), []) || [];
   const orders = useLiveQuery(() => db.orders.toArray(), []) || [];
   const orderSessions = useLiveQuery(() => db.orderSessions.list(), []) || [];
+
+  const getEmployeeDisplayName = (name: string | null | undefined) => {
+    if (!name) return '';
+    if (name === 'System' || name.toLowerCase() === 'admin') return name;
+    const found = employees.find(e => e.name.toLowerCase() === name.toLowerCase());
+    if (found && found.isDeleted) {
+      return `${found.name} (Ex-employee)`;
+    }
+    return name;
+  };
 
   // Local States
   const [historyPage, setHistoryPage] = useState(1);
@@ -60,7 +71,7 @@ export function OrderHistorySection({ searchQuery, onViewDetails, onQuickOrder }
         type: 'single',
         id: `single-${item.id}`,
         timestamp: item.receivedAt || item.completedAt || item.createdAt,
-        completedBy: item.receivedBy || item.completedBy || 'System',
+        completedBy: getEmployeeDisplayName(item.receivedBy || item.completedBy) || 'System',
         item,
       });
     });
@@ -74,12 +85,12 @@ export function OrderHistorySection({ searchQuery, onViewDetails, onQuickOrder }
           type: 'single',
           id: `single-group-${listId}`,
           timestamp: session?.completedAt || item.receivedAt || item.completedAt || item.createdAt,
-          completedBy: session?.completedBy || item.receivedBy || item.completedBy || 'System',
+          completedBy: getEmployeeDisplayName(session?.completedBy || item.receivedBy || item.completedBy) || 'System',
           item,
         });
       } else {
         const timestamp = session?.completedAt || Math.max(...items.map(i => i.receivedAt || i.completedAt || i.createdAt));
-        const completedBy = session?.completedBy || items[0].receivedBy || items[0].completedBy || 'System';
+        const completedBy = getEmployeeDisplayName(session?.completedBy || items[0].receivedBy || items[0].completedBy) || 'System';
         entries.push({
           type: 'multi',
           id: `multi-group-${listId}`,
