@@ -87,9 +87,36 @@ export interface OrderSession {
 // Simple event-target to notify subscribers when any mutation is completed locally
 const DB_EVENTS = typeof window !== 'undefined' ? new EventTarget() : null;
 
+let ws: WebSocket | null = null;
+if (typeof window !== 'undefined') {
+  function connectWs() {
+    // Determine the WS URL correctly based on the current origin
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProtocol}//${window.location.host}/_ws`;
+    ws = new WebSocket(wsUrl);
+
+    ws.onmessage = (event) => {
+      if (event.data === 'db-change') {
+        if (DB_EVENTS) {
+          DB_EVENTS.dispatchEvent(new Event('change'));
+        }
+      }
+    };
+
+    ws.onclose = () => {
+      // Reconnect after 3 seconds
+      setTimeout(connectWs, 3000);
+    };
+  }
+  connectWs();
+}
+
 export function notifyDbChanged() {
   if (DB_EVENTS) {
     DB_EVENTS.dispatchEvent(new Event('change'));
+  }
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send('db-change');
   }
 }
 
