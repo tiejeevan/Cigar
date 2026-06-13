@@ -2,14 +2,15 @@
 
 import { useState } from 'react';
 import { db, useLiveQuery, OrderItem } from '@/lib/db';
-import { BookOpen, Eye, ChevronDown, ChevronUp } from 'lucide-react';
+import { BookOpen, Eye, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 
 interface OrderHistorySectionProps {
   searchQuery: string;
   onViewDetails: (item: OrderItem) => void;
+  onQuickOrder?: (item: OrderItem) => void;
 }
 
-export function OrderHistorySection({ searchQuery, onViewDetails }: OrderHistorySectionProps) {
+export function OrderHistorySection({ searchQuery, onViewDetails, onQuickOrder }: OrderHistorySectionProps) {
   // Queries
   const orders = useLiveQuery(() => db.orders.toArray(), []) || [];
   const orderSessions = useLiveQuery(() => db.orderSessions.list(), []) || [];
@@ -182,6 +183,16 @@ export function OrderHistorySection({ searchQuery, onViewDetails }: OrderHistory
                     <div className="text-sm font-mono text-gray-300 bg-[#14161C] px-2.5 py-1.5 border border-[#2A2A2A] rounded-xl font-bold">
                       Qty: {item.quantity}
                     </div>
+                    {onQuickOrder && (
+                      <button
+                        type="button"
+                        onClick={() => onQuickOrder(item)}
+                        className="w-8 h-8 rounded-full bg-[#14161C] border border-[#2A2A2A] hover:border-[#D4AF37]/50 text-gray-400 hover:text-[#D4AF37] flex items-center justify-center transition-all active:scale-90 cursor-pointer shadow-md shrink-0"
+                        title="Quick Reorder"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => onViewDetails(item)}
@@ -257,6 +268,16 @@ export function OrderHistorySection({ searchQuery, onViewDetails }: OrderHistory
                               <div className="text-sm font-mono text-gray-300 bg-[#14161C] px-2.5 py-1 border border-[#2A2A2A] rounded-lg">
                                 Qty: {item.quantity}
                               </div>
+                              {onQuickOrder && (
+                                <button
+                                  type="button"
+                                  onClick={() => onQuickOrder(item)}
+                                  className="w-8 h-8 rounded-full bg-[#14161C] border border-[#2A2A2A] hover:border-[#D4AF37]/50 text-gray-400 hover:text-[#D4AF37] flex items-center justify-center transition-all active:scale-90 cursor-pointer shadow-md shrink-0"
+                                  title="Quick Reorder"
+                                >
+                                  <RefreshCw className="w-4 h-4" />
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => onViewDetails(item)}

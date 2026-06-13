@@ -725,6 +725,18 @@ export function OrderBookSection({
 
 
 
+  const handleQuickOrder = (item: OrderItem) => {
+    setNewBrand(item.brand);
+    setNewFlavor(item.flavor || '');
+    setNewCategory(item.category || '');
+    setNewPackType(item.packType || (item.category === 'Drinks' ? 'Bottle/Can' : 'Item'));
+    setNewQty(item.quantity.toString());
+    setNewUrgency(item.urgency || 'medium');
+    setNewTimeframe(item.timeframe || '1week');
+    setNewNotes(item.notes || '');
+    setShowAddItemModal(true);
+  };
+
   // Auth Screen if not logged in
   if (!activeEmployee) {
     return (
@@ -1503,7 +1515,11 @@ export function OrderBookSection({
               })()}
             </>
           ) : (
-            <OrderHistorySection searchQuery={searchQuery} onViewDetails={openOrderDetailModal} />
+            <OrderHistorySection 
+              searchQuery={searchQuery} 
+              onViewDetails={openOrderDetailModal} 
+              onQuickOrder={handleQuickOrder} 
+            />
           )}
 
       {/* ============== FUTURISTIC ADD ITEM MODAL ============== */}
