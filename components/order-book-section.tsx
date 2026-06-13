@@ -3,11 +3,12 @@
 import { useState, useEffect } from 'react';
 import { db, useLiveQuery, OrderItem, Employee, OrderSession } from '@/lib/db';
 import { PRODUCT_CATEGORIES } from '@/lib/constants';
-import { 
-  BookOpen, Search, Trash2, Calendar, User, Key, Lock, Unlock, 
+import { OrderHistorySection } from '@/components/order-history-section';
+import {
+  BookOpen, Search, Trash2, Calendar, User, Key, Lock, Unlock,
   Plus, CheckCircle, Clock, ShoppingCart, UserCheck, ChevronDown, ChevronUp,
-  Sparkles, Package, Flame, Eye, ShieldAlert, Edit2, Check, X, 
-  ClipboardCopy, ListPlus, TrendingUp, DollarSign, CheckSquare
+  Sparkles, Package, Flame, Eye, ShieldAlert, Edit2, Check, X,
+  ClipboardCopy, ListPlus, CheckSquare, Filter, DollarSign
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -17,7 +18,7 @@ interface OrderBookSectionProps {
   setActiveEmployee: (employee: Employee | null) => void;
 }
 
-export function OrderBookSection({ 
+export function OrderBookSection({
   orders: initialOrders,
   activeEmployee,
   setActiveEmployee
@@ -65,13 +66,101 @@ export function OrderBookSection({
   const items = useLiveQuery(() => db.items.toArray(), []) || [];
   const orderSessions = useLiveQuery(() => db.orderSessions.list(), []) || [];
 
+  // Selected Order Detail Modal State
+  const [selectedOrderDetailId, setSelectedOrderDetailId] = useState<number | null>(null);
+
+  // Modal Edit States
+  const [modalEditing, setModalEditing] = useState(false);
+  const [modalEditQty, setModalEditQty] = useState<number>(1);
+  const [modalEditNotes, setModalEditNotes] = useState<string>('');
+  const [modalEditUrgency, setModalEditUrgency] = useState<'low' | 'medium' | 'high'>('medium');
+  const [modalEditTimeframe, setModalEditTimeframe] = useState<'asap' | '1week' | '2weeks' | 'monthly'>('1week');
+
+  // Modal Split States
+  const [modalSplitActive, setModalSplitActive] = useState(false);
+  const [modalSplitQty, setModalSplitQty] = useState<number>(1);
+
+  const selectedOrderDetail = orders.find(o => o.id === selectedOrderDetailId) || null;
+
+  const openOrderDetailModal = (order: OrderItem) => {
+    setSelectedOrderDetailId(order.id!);
+    setModalEditQty(order.quantity);
+    setModalEditNotes(order.notes || '');
+    setModalEditUrgency(order.urgency || 'medium');
+    setModalEditTimeframe(order.timeframe || '1week');
+    setModalSplitActive(false);
+    setModalSplitQty(1);
+    setModalEditing(false);
+  };
+
+  const handleSaveModalEdit = async (id: number) => {
+    await db.orders.update(id, {
+      quantity: modalEditQty,
+      notes: modalEditNotes.trim(),
+      urgency: modalEditUrgency,
+      timeframe: modalEditTimeframe
+    });
+    toast.success('Request details updated successfully!');
+    setModalEditing(false);
+  };
+
+  const handleModalPartialComplete = async (item: OrderItem, fillQty: number) => {
+    if (fillQty <= 0 || fillQty >= item.quantity || !activeEmployee) {
+      toast.error('Invalid quantity split.');
+      return;
+    }
+
+    try {
+      const remainingQty = item.quantity - fillQty;
+
+      // 1. Update existing item's quantity to remaining
+      await db.orders.update(item.id!, { quantity: remainingQty });
+
+      // 2. Add new temporary item with target quantity
+      const tempOrder: Omit<OrderItem, 'id'> = {
+        inventoryId: item.inventoryId,
+        brand: item.brand,
+        flavor: item.flavor,
+        category: item.category,
+        packType: item.packType,
+        quantity: fillQty,
+        status: 'pending',
+        createdAt: item.createdAt,
+        addedBy: item.addedBy,
+        urgency: item.urgency,
+        timeframe: item.timeframe,
+        estimatedPrice: item.estimatedPrice,
+        notes: `Partial split from original request of ${item.quantity}. Notes: ${item.notes || ''}`,
+        approvedBy: item.approvedBy,
+        approvedAt: item.approvedAt
+      };
+
+      const tempId = await db.orders.add(tempOrder);
+
+      // 3. Immediately trigger completion batch session for that split item
+      await db.orders.completeActiveOrders(
+        [tempId],
+        activeEmployee.name,
+        `Partial Complete - ${item.brand.toUpperCase()}`,
+        'General Distributor',
+        `Fulfillment split of ${fillQty} items out of original requested ${item.quantity}.`
+      );
+
+      toast.success(`Completed partial order of ${fillQty} units. ${remainingQty} units left pending.`);
+      setModalSplitActive(false);
+      setSelectedOrderDetailId(null); // Close details modal since split finished
+    } catch (err) {
+      toast.error('Failed to complete partial split');
+    }
+  };
+
   // Authentication State
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  
+
   // Login Form
   const [loginName, setLoginName] = useState('');
   const [loginPin, setLoginPin] = useState('');
-  
+
   // Registration Form
   const [regName, setRegName] = useState('');
   const [regPin, setRegPin] = useState('');
@@ -86,7 +175,6 @@ export function OrderBookSection({
   const [newQty, setNewQty] = useState('1');
   const [newUrgency, setNewUrgency] = useState<'low' | 'medium' | 'high'>('medium');
   const [newTimeframe, setNewTimeframe] = useState<'asap' | '1week' | '2weeks' | 'monthly'>('1week');
-  const [newEstimatedPrice, setNewEstimatedPrice] = useState('0.00');
   const [newNotes, setNewNotes] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -95,12 +183,6 @@ export function OrderBookSection({
   const [filterTimeframe, setFilterTimeframe] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('pending-approved');
   const [sortBy, setSortBy] = useState<string>('newest');
-
-  // Inline editing
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editQty, setEditQty] = useState<number>(1);
-  const [editPrice, setEditPrice] = useState<string>('0.00');
-  const [editNotes, setEditNotes] = useState<string>('');
 
   // Splits & Partial completion state
   const [splitInputId, setSplitInputId] = useState<number | null>(null);
@@ -149,7 +231,8 @@ export function OrderBookSection({
 
   // Search & Collapsing
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedReports, setExpandedReports] = useState<Record<string, boolean>>({});
+  const [showFilters, setShowFilters] = useState(false);
+  const [activeTab, setActiveTab] = useState<'orders' | 'history'>('orders');
 
   // Active items selection for shopping completion
   const [selectedItemIds, setSelectedItemIds] = useState<Record<number, boolean>>({});
@@ -238,8 +321,8 @@ export function OrderBookSection({
 
     // Look for matching item in inventory to get its inventoryId and prefill price if not manually set
     const matchedItem = items.find(
-      i => i.brand.toLowerCase() === newBrand.toLowerCase().trim() && 
-           (newFlavor ? i.flavor.toLowerCase() === newFlavor.toLowerCase().trim() : true)
+      i => i.brand.toLowerCase() === newBrand.toLowerCase().trim() &&
+        (newFlavor ? i.flavor.toLowerCase() === newFlavor.toLowerCase().trim() : true)
     );
 
     const order: Omit<OrderItem, 'id'> = {
@@ -254,13 +337,13 @@ export function OrderBookSection({
       addedBy: activeEmployee.name,
       urgency: newUrgency,
       timeframe: newTimeframe,
-      estimatedPrice: parseFloat(newEstimatedPrice) || 0.00,
+      estimatedPrice: 0.00,
       notes: newNotes.trim()
     };
 
     await db.orders.add(order);
     toast.success('Added to Store Needs list');
-    
+
     setNewBrand('');
     setNewFlavor('');
     setNewCategory('');
@@ -268,7 +351,6 @@ export function OrderBookSection({
     setNewQty('1');
     setNewUrgency('medium');
     setNewTimeframe('1week');
-    setNewEstimatedPrice('0.00');
     setNewNotes('');
     setShowSuggestions(false);
   };
@@ -280,12 +362,11 @@ export function OrderBookSection({
       const flavorVal = parts[1].trim();
       setNewBrand(brandVal);
       setNewFlavor(flavorVal);
-      
+
       const matched = items.find(i => i.brand === brandVal && i.flavor === flavorVal);
       if (matched) {
         setNewCategory(matched.category || 'Cigarillos');
         setNewPackType(matched.packType || 'Single');
-        setNewEstimatedPrice(matched.price ? String(matched.price) : '0.00');
       }
     } else {
       setNewBrand(suggestion);
@@ -301,7 +382,6 @@ export function OrderBookSection({
       if (matched) {
         setNewCategory(matched.category || 'Cigarillos');
         setNewPackType(matched.packType || 'Single');
-        setNewEstimatedPrice(matched.price ? String(matched.price) : '0.00');
       }
     }
     setShowSuggestions(false);
@@ -338,7 +418,7 @@ export function OrderBookSection({
   // Batch Complete Orders inside Dialog Modal
   const handleProcessCompletion = async () => {
     let targetIds: number[] = [];
-    
+
     if (completionMode === 'selected') {
       targetIds = Object.keys(selectedItemIds)
         .map(Number)
@@ -360,10 +440,10 @@ export function OrderBookSection({
 
     try {
       const res = await db.orders.completeActiveOrders(
-        targetIds, 
-        activeEmployee.name, 
-        sessionName, 
-        vendorName, 
+        targetIds,
+        activeEmployee.name,
+        sessionName,
+        vendorName,
         sessionNotes
       );
       if (res && res.success) {
@@ -391,7 +471,7 @@ export function OrderBookSection({
 
     try {
       for (const id of selectedIds) {
-        await db.orders.update(id, { 
+        await db.orders.update(id, {
           status: 'approved',
           approvedBy: activeEmployee.name,
           approvedAt: Date.now()
@@ -417,7 +497,7 @@ export function OrderBookSection({
 
     try {
       for (const id of selectedIds) {
-        await db.orders.update(id, { 
+        await db.orders.update(id, {
           status: 'received',
           receivedBy: activeEmployee.name,
           receivedAt: Date.now()
@@ -440,8 +520,7 @@ export function OrderBookSection({
 
     const selectedItemsList = orders.filter(o => selectedIds.includes(o.id!));
     const text = selectedItemsList.map(item => {
-      const priceText = item.estimatedPrice ? ` ($${item.estimatedPrice} ea)` : '';
-      return `- ${item.brand.toUpperCase()}${item.flavor ? ` (${item.flavor})` : ''} x${item.quantity}${priceText} - Cycle: ${item.timeframe || '1week'}, Urgency: ${(item.urgency || 'medium').toUpperCase()}${item.notes ? ` (Note: ${item.notes})` : ''}`;
+      return `- ${item.brand.toUpperCase()}${item.flavor ? ` (${item.flavor})` : ''} x${item.quantity} - Cycle: ${item.timeframe || '1week'}, Urgency: ${(item.urgency || 'medium').toUpperCase()}${item.notes ? ` (Note: ${item.notes})` : ''}`;
     }).join('\n');
 
     navigator.clipboard.writeText(`Gaint Mart - Store Needs List:\n${text}`);
@@ -493,10 +572,10 @@ export function OrderBookSection({
 
     try {
       const remainingQty = item.quantity - fillQty;
-      
+
       // 1. Update existing item's quantity to remaining
       await db.orders.update(item.id!, { quantity: remainingQty });
-      
+
       // 2. Add new temporary item with target quantity
       const tempOrder: Omit<OrderItem, 'id'> = {
         inventoryId: item.inventoryId,
@@ -515,15 +594,15 @@ export function OrderBookSection({
         approvedBy: item.approvedBy,
         approvedAt: item.approvedAt
       };
-      
+
       const tempId = await db.orders.add(tempOrder);
-      
+
       // 3. Immediately trigger completion batch session for that split item
       await db.orders.completeActiveOrders(
-        [tempId], 
-        activeEmployee.name, 
-        `Partial Complete - ${item.brand.toUpperCase()}`, 
-        'General Distributor', 
+        [tempId],
+        activeEmployee.name,
+        `Partial Complete - ${item.brand.toUpperCase()}`,
+        'General Distributor',
         `Fulfillment split of ${fillQty} items out of original requested ${item.quantity}.`
       );
 
@@ -544,36 +623,11 @@ export function OrderBookSection({
     };
     const current = item.timeframe || '1week';
     const next = cycleMap[current];
-    await db.orders.update(item.id!, { 
+    await db.orders.update(item.id!, {
       timeframe: next,
       notes: `${item.notes || ''} (Deferred on ${new Date().toLocaleDateString()})`.trim()
     });
     toast.info(`Postponed ${item.brand.toUpperCase()} cycle to ${next.toUpperCase()}`);
-  };
-
-  // Inline editing actions
-  const startEditing = (item: OrderItem) => {
-    setEditingId(item.id!);
-    setEditQty(item.quantity);
-    setEditPrice(item.estimatedPrice ? String(item.estimatedPrice) : '0.00');
-    setEditNotes(item.notes || '');
-  };
-
-  const handleSaveEdit = async (id: number) => {
-    await db.orders.update(id, {
-      quantity: editQty,
-      estimatedPrice: parseFloat(editPrice) || 0.00,
-      notes: editNotes.trim()
-    });
-    toast.success('Request details updated');
-    setEditingId(null);
-  };
-
-  const toggleReportExpand = (listId: string) => {
-    setExpandedReports(prev => ({
-      ...prev,
-      [listId]: !prev[listId]
-    }));
   };
 
   const formatDateTime = (timestamp: number) => {
@@ -597,8 +651,8 @@ export function OrderBookSection({
   // Search Filter
   if (searchQuery.trim()) {
     const query = searchQuery.toLowerCase();
-    displayNeeds = displayNeeds.filter(o => 
-      o.brand.toLowerCase().includes(query) || 
+    displayNeeds = displayNeeds.filter(o =>
+      o.brand.toLowerCase().includes(query) ||
       o.flavor.toLowerCase().includes(query) ||
       (o.notes && o.notes.toLowerCase().includes(query)) ||
       (o.category && o.category.toLowerCase().includes(query))
@@ -625,11 +679,6 @@ export function OrderBookSection({
       const weightB = priorityWeight[b.urgency || 'medium'];
       return weightB - weightA;
     }
-    if (sortBy === 'cost') {
-      const costA = (a.estimatedPrice || 0) * a.quantity;
-      const costB = (b.estimatedPrice || 0) * b.quantity;
-      return costB - costA;
-    }
     return 0;
   });
 
@@ -643,12 +692,32 @@ export function OrderBookSection({
   const asapCount = activeOrders.filter(o => o.timeframe === 'asap').length;
   const oneWeekCount = activeOrders.filter(o => o.timeframe === '1week').length;
   const twoWeekCount = activeOrders.filter(o => o.timeframe === '2weeks').length;
-  
-  const activePriceSum = activeOrders.reduce((sum, o) => sum + (o.estimatedPrice || 0) * o.quantity, 0);
 
   const overallCompletedCount = orders.filter(o => o.status === 'ordered' || o.status === 'received').length;
   const totalCount = orders.length;
   const fulfillmentRate = totalCount > 0 ? Math.round((overallCompletedCount / totalCount) * 100) : 100;
+  const selectedCount = Object.values(selectedItemIds).filter(Boolean).length;
+
+  // Get item count for the current completion modal mode
+  const getCompletionModalItemCount = () => {
+    if (completionMode === 'selected') {
+      return selectedCount;
+    }
+    if (completionMode === 'asap') {
+      return orders.filter(o => (o.status === 'pending' || o.status === 'approved') && o.timeframe === 'asap').length;
+    }
+    if (completionMode === '1week') {
+      return orders.filter(o => (o.status === 'pending' || o.status === 'approved') && o.timeframe === '1week').length;
+    }
+    if (completionMode === '2weeks') {
+      return orders.filter(o => (o.status === 'pending' || o.status === 'approved') && o.timeframe === '2weeks').length;
+    }
+    if (completionMode === 'all') {
+      return activeNeedsCount;
+    }
+    return 0;
+  };
+  const modalTargetCount = getCompletionModalItemCount();
 
   // Suggested reorders from inventory (low stock)
   const lowStockSuggestions = items.filter(item => item.quantity <= item.reorderThreshold);
@@ -661,7 +730,7 @@ export function OrderBookSection({
       <div className="flex flex-col items-center justify-center py-12 px-4 max-w-md mx-auto text-left">
         <div className="bg-[#0D0F13] border border-[#2A2A2A] rounded-3xl p-6 sm:p-8 w-full shadow-2xl relative overflow-hidden flex flex-col">
           <div className="absolute top-0 left-0 w-full h-1.5 bg-[#D4AF37]"></div>
-          
+
           <div className="flex justify-center mb-6">
             <div className="p-4 bg-[#D4AF37]/10 border border-[#D4AF37]/20 rounded-2xl">
               <Lock className="w-8 h-8 text-[#D4AF37]" />
@@ -672,13 +741,13 @@ export function OrderBookSection({
           <p className="text-xs text-center text-gray-500 uppercase tracking-widest font-semibold mb-8">Order Book Security</p>
 
           <div className="flex bg-[#14161C] border border-[#2A2A2A] rounded-xl p-1 mb-6">
-            <button 
+            <button
               onClick={() => { setAuthMode('login'); setLoginPin(''); }}
               className={`flex-1 text-center py-2.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${authMode === 'login' ? 'bg-[#2A2A2A] text-[#D4AF37] shadow' : 'text-gray-400 hover:text-white'}`}
             >
               Log In
             </button>
-            <button 
+            <button
               onClick={() => { setAuthMode('register'); setRegPin(''); setRegConfirmPin(''); }}
               className={`flex-1 text-center py-2.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${authMode === 'register' ? 'bg-[#2A2A2A] text-[#D4AF37] shadow' : 'text-gray-400 hover:text-white'}`}
             >
@@ -821,688 +890,302 @@ export function OrderBookSection({
 
   return (
     <div className="flex flex-col gap-6 w-full max-w-[1400px] mx-auto text-left">
-      
-      {/* 1. Fulfillment Analytics Dashboard Header */}
-      {/* Mobile Analytics Bar (Single compressed row) */}
-      <div className="flex sm:hidden bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl p-3.5 justify-between items-center text-center gap-1.5 shadow-sm animate-in fade-in duration-300">
-        <div className="flex-1 flex flex-col items-center">
-          <span className="text-[8px] uppercase tracking-wider text-gray-500 font-extrabold mb-0.5">Requests</span>
-          <span className="text-base font-mono text-[#E5E1DA] font-bold">{activeNeedsCount}</span>
-        </div>
-        <div className="w-[1px] h-6 bg-[#2A2A2A]/60" />
-        <div className="flex-1 flex flex-col items-center">
-          <span className="text-[8px] uppercase tracking-wider text-gray-500 font-extrabold mb-0.5">Spend</span>
-          <span className="text-base font-mono text-emerald-400 font-bold">${activePriceSum.toFixed(0)}</span>
-        </div>
-        <div className="w-[1px] h-6 bg-[#2A2A2A]/60" />
-        <div className="flex-1 flex flex-col items-center">
-          <span className="text-[8px] uppercase tracking-wider text-gray-500 font-extrabold mb-0.5">Critical</span>
-          <span className="text-base font-mono text-red-400 font-bold">{highPriorityCount}</span>
-        </div>
-        <div className="w-[1px] h-6 bg-[#2A2A2A]/60" />
-        <div className="flex-1 flex flex-col items-center">
-          <span className="text-[8px] uppercase tracking-wider text-gray-500 font-extrabold mb-0.5">Fulfill</span>
-          <span className="text-base font-mono text-blue-400 font-bold">{fulfillmentRate}%</span>
-        </div>
-      </div>
-
-      {/* Desktop Analytics Dashboard (4 Cards) */}
-      <div className="hidden sm:grid grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in slide-in-from-top-3 duration-300">
-        
-        {/* Metric 1: Store Needs */}
-        <div className="bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl p-5 flex items-center justify-between shadow-sm relative overflow-hidden">
-          <div className="absolute top-0 left-0 h-full w-1 bg-[#D4AF37]" />
-          <div>
-            <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold block mb-1">Active Store Requests</span>
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-mono text-[#E5E1DA] font-bold">{activeNeedsCount}</span>
-              <span className="text-xs text-gray-400">items logged</span>
-            </div>
-            <span className="text-[9px] text-[#888] block mt-1">Awaiting order cycle</span>
-          </div>
-          <ShoppingCart className="w-10 h-10 text-[#D4AF37]/10" />
-        </div>
-
-        {/* Metric 2: Estimated Spend */}
-        <div className="bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl p-5 flex items-center justify-between shadow-sm relative overflow-hidden">
-          <div className="absolute top-0 left-0 h-full w-1 bg-emerald-500" />
-          <div>
-            <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold block mb-1">Est. Projected Spend</span>
-            <div className="flex items-baseline gap-1">
-              <span className="text-3xl font-mono text-emerald-400 font-bold">${activePriceSum.toFixed(2)}</span>
-            </div>
-            <span className="text-[9px] text-[#888] block mt-1">Based on estimated prices</span>
-          </div>
-          <DollarSign className="w-10 h-10 text-emerald-500/10" />
-        </div>
-
-        {/* Metric 3: urgencies breakdown */}
-        <div className="bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl p-5 flex items-center justify-between shadow-sm relative overflow-hidden">
-          <div className="absolute top-0 left-0 h-full w-1 bg-red-500" />
-          <div>
-            <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold block mb-1">Urgency Dashboard</span>
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-mono text-red-400 font-bold">{highPriorityCount}</span>
-              <span className="text-xs text-red-500 font-bold">CRITICAL / HIGH</span>
-            </div>
-            <span className="text-[9px] text-[#888] block mt-1">{asapCount} requested ASAP timeframe</span>
-          </div>
-          <ShieldAlert className="w-10 h-10 text-red-500/10" />
-        </div>
-
-        {/* Metric 4: Cycles & Fulfillment */}
-        <div className="bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl p-5 flex items-center justify-between shadow-sm relative overflow-hidden">
-          <div className="absolute top-0 left-0 h-full w-1 bg-blue-500" />
-          <div>
-            <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold block mb-1">Fulfillment Rate</span>
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-mono text-blue-400 font-bold">{fulfillmentRate}%</span>
-              <span className="text-xs text-gray-400">({overallCompletedCount}/{totalCount})</span>
-            </div>
-            <span className="text-[9px] text-[#888] block mt-1">Cycles: {oneWeekCount} (1w) | {twoWeekCount} (2w)</span>
-          </div>
-          <TrendingUp className="w-10 h-10 text-blue-500/10" />
-        </div>
-
-      </div>
 
       <div className="flex flex-col lg:flex-row gap-8 w-full">
-        
+
         {/* Collaborative Needs Board */}
         <div className="flex-1 flex flex-col gap-6">
-          
-          {/* Header Info Bar */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#0D0F13] border border-[#2A2A2A] px-5 py-4 rounded-2xl">
-            <div>
-              <h2 className="text-2xl font-serif text-[#E5E1DA]">Order Book</h2>
-              <p className="text-[9px] uppercase tracking-widest text-[#888] mt-0.5">Unified store requests list & fulfillment cycle manager</p>
-            </div>
-          </div>
 
-          {/* Search Box */}
-          <div className="relative">
-            <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-[#666]" />
-            <input 
-              type="text" 
-              placeholder="Search store requests by brand, flavor, categories, or notes..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-[#0D0F13] border border-[#2A2A2A] rounded-xl text-base text-[#E5E1DA] py-4 pl-12 pr-4 focus:outline-none focus:border-[#D4AF37] transition-colors font-mono shadow-sm"
-            />
-          </div>
-
-          {/* Filtering & Sorting Controls Bar */}
-          <div className="flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center bg-[#0D0F13] border border-[#2A2A2A] p-4 rounded-2xl shadow-sm">
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full xl:w-auto">
-              {/* Status tabs */}
-              <div className="flex overflow-x-auto scrollbar-none flex-nowrap bg-[#14161C] border border-[#2A2A2A] rounded-xl p-1 text-[10px] w-full sm:w-auto shrink-0">
-                {[
-                  { label: 'Active', value: 'pending-approved' },
-                  { label: 'Pending', value: 'pending' },
-                  { label: 'Approved', value: 'approved' },
-                  { label: 'Ordered', value: 'ordered' },
-                  { label: 'Received', value: 'received' }
-                ].map(tab => (
-                  <button
-                    key={tab.value}
-                    onClick={() => setFilterStatus(tab.value)}
-                    className={`flex-shrink-0 whitespace-nowrap px-3 py-2 rounded-lg font-bold uppercase tracking-wider transition-all ${
-                      filterStatus === tab.value
-                        ? 'bg-[#2A2A2A] text-[#D4AF37] shadow'
-                        : 'text-gray-400 hover:text-white'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-              
-              {/* Dropdowns group */}
-              <div className="flex items-center gap-3 w-full sm:w-auto">
-                {/* Urgency select */}
-                <select
-                  value={filterUrgency}
-                  onChange={(e) => setFilterUrgency(e.target.value)}
-                  className="bg-[#14161C] border border-[#2A2A2A] text-gray-300 rounded-xl px-3 py-2.5 sm:py-2 text-xs font-semibold focus:outline-none focus:border-[#D4AF37] cursor-pointer flex-1 sm:flex-none w-full sm:w-auto"
-                >
-                  <option value="all">All Urgencies</option>
-                  <option value="high">High Urgency</option>
-                  <option value="medium">Medium Urgency</option>
-                  <option value="low">Low Urgency</option>
-                </select>
-                
-                {/* Timeframe select */}
-                <select
-                  value={filterTimeframe}
-                  onChange={(e) => setFilterTimeframe(e.target.value)}
-                  className="bg-[#14161C] border border-[#2A2A2A] text-gray-300 rounded-xl px-3 py-2.5 sm:py-2 text-xs font-semibold focus:outline-none focus:border-[#D4AF37] cursor-pointer flex-1 sm:flex-none w-full sm:w-auto"
-                >
-                  <option value="all">All Cycles</option>
-                  <option value="asap">ASAP</option>
-                  <option value="1week">1 Week Cycle</option>
-                  <option value="2weeks">2 Week Cycle</option>
-                  <option value="monthly">Monthly Cycle</option>
-                </select>
-              </div>
-            </div>
-            
-            {/* Sorting */}
-            <div className="flex items-center gap-2 text-xs w-full xl:w-auto justify-between xl:justify-end border-t xl:border-0 border-[#2A2A2A]/40 pt-2 xl:pt-0">
-              <span className="text-gray-500 uppercase tracking-wider font-semibold">Sort:</span>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="bg-[#14161C] border border-[#2A2A2A] text-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:border-[#D4AF37] font-semibold cursor-pointer"
-              >
-                <option value="newest">Newest First</option>
-                <option value="oldest">Oldest First</option>
-                <option value="urgency">Urgency Level</option>
-                <option value="cost">Estimated Cost</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Needs List */}
-          <div className="bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl shadow-md overflow-hidden flex flex-col">
-            
-            {/* Batch Action Toolbar */}
-            <div className="p-4 bg-[#14161C]/60 border-b border-[#2A2A2A] flex flex-col md:flex-row gap-4 justify-between md:items-center">
-              <div className="flex items-center gap-3">
-                <input 
-                  type="checkbox" 
-                  checked={displayNeeds.length > 0 && displayNeeds.every(item => selectedItemIds[item.id!])}
-                  onChange={() => handleSelectAll(displayNeeds)}
-                  disabled={displayNeeds.length === 0}
-                  className="w-4.5 h-4.5 text-[#D4AF37] accent-[#D4AF37] rounded border-gray-300 focus:ring-[#D4AF37] cursor-pointer"
-                />
-                <span className="text-xs text-gray-300 font-bold uppercase tracking-wider">Select All ({displayNeeds.length})</span>
-                {Object.values(selectedItemIds).filter(Boolean).length > 0 && (
-                  <span className="text-xs font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-2 py-0.5 rounded-md font-mono">
-                    {Object.values(selectedItemIds).filter(Boolean).length} Selected
-                  </span>
-                )}
-              </div>
-              
-              <div className="flex flex-wrap items-center gap-2">
-                {/* Copy list button */}
-                <button
-                  onClick={handleCopySelectedList}
-                  disabled={Object.values(selectedItemIds).filter(Boolean).length === 0}
-                  className="flex items-center gap-1.5 bg-[#14161C] border border-[#2A2A2A] hover:border-[#D4AF37]/50 disabled:opacity-40 disabled:border-zinc-800 text-gray-300 hover:text-white px-3 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all active:scale-95 cursor-pointer"
-                >
-                  <ClipboardCopy className="w-3.5 h-3.5" />
-                  Copy Text
-                </button>
-
-                {/* Manager Actions */}
-                {activeEmployee.role === 'manager' && (
-                  <>
-                    <button
-                      onClick={handleApproveSelected}
-                      disabled={Object.values(selectedItemIds).filter(Boolean).length === 0}
-                      className="flex items-center gap-1.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-400 disabled:opacity-40 disabled:border-zinc-800 disabled:text-gray-500 px-3 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all active:scale-95 cursor-pointer"
-                    >
-                      Approve
-                    </button>
-                    
-                    <button
-                      onClick={handleReceiveSelected}
-                      disabled={Object.values(selectedItemIds).filter(Boolean).length === 0}
-                      className="flex items-center gap-1.5 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/30 text-blue-400 disabled:opacity-40 disabled:border-zinc-800 disabled:text-gray-500 px-3 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all active:scale-95 cursor-pointer"
-                    >
-                      Receive Stock
-                    </button>
-                  </>
-                )}
-                
-                {/* ADVANCED COMPLETE BUTTON MODAL TRIGGER */}
-                <button
-                  onClick={openCompleteModal}
-                  className="flex items-center gap-1.5 bg-[#22C55E] hover:bg-[#1fba59] text-black px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all active:scale-95 shadow-sm cursor-pointer animate-pulse"
-                >
-                  <CheckSquare className="w-3.5 h-3.5" />
-                  Complete / Order Batch
-                </button>
-              </div>
-            </div>
-
-            {displayNeeds.length === 0 ? (
-              <div className="p-16 text-center flex flex-col items-center justify-center space-y-4">
-                <ShoppingCart className="w-12 h-12 text-[#2A2A2A]" />
-                <p className="text-[10px] uppercase tracking-widest text-[#888]">No matching store requests logged.</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-[#2A2A2A]">
-                {displayNeeds.map(order => {
-                  const isEditing = editingId === order.id;
-                  
-                  // Priority Styling variables
-                  const isHigh = order.urgency === 'high';
-                  const urgencyStyles = isHigh 
-                    ? 'border-l-4 border-l-red-500 bg-red-500/[0.02]' 
-                    : order.urgency === 'medium'
-                    ? 'border-l-4 border-l-orange-500 bg-orange-500/[0.01]'
-                    : 'border-l-4 border-l-blue-500';
-
-                  return (
-                    <div 
-                      key={order.id} 
-                      className={`p-4 sm:p-5 flex flex-col hover:bg-[#14161C]/50 transition-colors gap-3 ${urgencyStyles} ${selectedItemIds[order.id!] ? 'bg-[#D4AF37]/5' : ''}`}
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        
-                        {/* Checkbox and Card Main details */}
-                        <div className="flex items-start gap-3.5 min-w-0 flex-1">
-                          <input 
-                            type="checkbox"
-                            checked={!!selectedItemIds[order.id!]}
-                            onChange={() => toggleItemSelection(order.id!)}
-                            className="w-4.5 h-4.5 mt-1 text-[#D4AF37] accent-[#D4AF37] rounded border-gray-300 focus:ring-[#D4AF37] shrink-0 cursor-pointer"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
-                              {order.category && (
-                                <span className={`text-[8px] sm:text-[9px] border px-2 py-0.5 rounded uppercase tracking-wider font-bold ${getCategoryBadgeStyles(order.category)}`}>
-                                  {order.category}
-                                </span>
-                              )}
-                              {order.packType && (
-                                <span className="text-[9px] sm:text-[10px] bg-[#14161C] border border-[#2A2A2A]/60 px-2 py-0.5 rounded text-[#888] uppercase tracking-wider font-semibold">
-                                  {order.packType}
-                                </span>
-                              )}
-                              
-                              {/* Urgency Badge */}
-                              <span className={`text-[8px] sm:text-[9px] border px-2 py-0.5 rounded uppercase tracking-wider font-bold ${
-                                isHigh ? 'bg-red-500/10 border-red-500/20 text-red-400' :
-                                order.urgency === 'medium' ? 'bg-orange-500/10 border-orange-500/20 text-orange-400' :
-                                'bg-blue-500/10 border-blue-500/20 text-blue-400'
-                              }`}>
-                                {order.urgency || 'medium'}
-                              </span>
-
-                              {/* Timeframe Cycle Badge */}
-                              <span className="text-[8px] sm:text-[9px] bg-zinc-800/80 text-zinc-300 border border-zinc-700/60 px-2 py-0.5 rounded uppercase tracking-wider font-bold flex items-center gap-1">
-                                <Clock className="w-2.5 h-2.5" />
-                                Cycle: {order.timeframe === 'asap' ? 'ASAP' : order.timeframe === '1week' ? '1 Week' : order.timeframe === '2weeks' ? '2 Weeks' : 'Monthly'}
-                              </span>
-
-                              {/* Status progression indicator */}
-                              <span className={`text-[8px] sm:text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                                order.status === 'pending' ? 'bg-zinc-800 text-zinc-400' :
-                                order.status === 'approved' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                                order.status === 'ordered' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-                                'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                              }`}>
-                                {order.status}
-                              </span>
-                            </div>
-
-                            <h4 className="text-base sm:text-lg font-serif text-[#E5E1DA] flex items-center gap-2 flex-wrap text-left uppercase">
-                              {getCategoryIcon(order.category)}
-                              <span className="font-bold">{order.brand}</span>
-                              {order.flavor && <span className="text-[#888] font-sans text-xs sm:text-sm normal-case italic">({order.flavor})</span>}
-                            </h4>
-
-                            {/* Added metadata info lines */}
-                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] text-gray-500 font-semibold mt-2.5">
-                              <span className="flex items-center gap-1">
-                                <User className="w-3.5 h-3.5 text-[#D4AF37]" />
-                                Logged by: {order.addedBy || 'System'}
-                              </span>
-                              <span>•</span>
-                              <span className="flex items-center gap-1 font-mono">
-                                <Calendar className="w-3.5 h-3.5" />
-                                {formatDateTime(order.createdAt)}
-                              </span>
-                              {order.approvedBy && (
-                                <>
-                                  <span>•</span>
-                                  <span className="text-amber-500 flex items-center gap-1">
-                                    Approved by {order.approvedBy} ({formatDateTime(order.approvedAt || 0)})
-                                  </span>
-                                </>
-                              )}
-                              {order.receivedBy && (
-                                <>
-                                  <span>•</span>
-                                  <span className="text-blue-400 flex items-center gap-1">
-                                    Received by {order.receivedBy} ({formatDateTime(order.receivedAt || 0)})
-                                  </span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {/* Quantity and Price summary */}
-                        <div className="flex flex-col items-end gap-1.5 shrink-0">
-                          {isEditing ? (
-                            <div className="flex flex-col gap-2 bg-[#14161C] p-3 border border-[#2A2A2A] rounded-xl text-left w-48">
-                              <div className="space-y-1">
-                                <label className="text-[9px] text-[#888] uppercase tracking-wider font-bold">Quantity</label>
-                                <input
-                                  type="number"
-                                  min="1"
-                                  value={editQty}
-                                  onChange={(e) => setEditQty(parseInt(e.target.value) || 1)}
-                                  className="w-full bg-[#0D0F13] border border-[#2A2A2A] text-white p-1 px-2 rounded-lg text-xs font-mono text-center font-bold"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-[9px] text-[#888] uppercase tracking-wider font-bold">Unit Price ($)</label>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={editPrice}
-                                  onChange={(e) => setEditPrice(e.target.value)}
-                                  className="w-full bg-[#0D0F13] border border-[#2A2A2A] text-white p-1 px-2 rounded-lg text-xs font-mono text-center font-bold"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-[9px] text-[#888] uppercase tracking-wider font-bold">Notes</label>
-                                <input
-                                  type="text"
-                                  value={editNotes}
-                                  onChange={(e) => setEditNotes(e.target.value)}
-                                  className="w-full bg-[#0D0F13] border border-[#2A2A2A] text-white p-1 px-2 rounded-lg text-xs"
-                                />
-                              </div>
-                              <div className="flex gap-2.5 mt-1 border-t border-[#2A2A2A]/40 pt-2">
-                                <button
-                                  onClick={() => handleSaveEdit(order.id!)}
-                                  className="flex-1 py-1.5 bg-emerald-500 text-black text-[10px] font-bold uppercase rounded-lg hover:bg-emerald-400 active:scale-95 transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
-                                >
-                                  <Check className="w-3 h-3" /> Save
-                                </button>
-                                <button
-                                  onClick={() => setEditingId(null)}
-                                  className="flex-1 py-1.5 bg-zinc-800 text-gray-400 text-[10px] font-bold uppercase rounded-lg hover:text-white active:scale-95 transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
-                                >
-                                  <X className="w-3 h-3" /> Cancel
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="text-right">
-                              <div className="flex items-center gap-3">
-                                <span className="text-[9px] uppercase tracking-widest text-gray-500 font-bold">Qty:</span>
-                                <span className="text-xl font-mono text-[#E5E1DA] font-bold">{order.quantity}</span>
-                              </div>
-                              <div className="text-[10px] text-gray-400 font-mono mt-1">
-                                Est. Cost: <strong className="text-emerald-400">${((order.estimatedPrice || 0) * order.quantity).toFixed(2)}</strong>
-                              </div>
-                              {order.estimatedPrice ? (
-                                <div className="text-[9px] text-[#888] font-mono mt-0.5">
-                                  (${order.estimatedPrice.toFixed(2)} ea)
-                                </div>
-                              ) : null}
-                            </div>
-                          )}
-                        </div>
-
-                      </div>
-
-                      {/* Display special notes & action buttons in secondary row */}
-                      {!isEditing && (
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-t border-[#2A2A2A]/30 pt-3 gap-3">
-                          
-                          {/* Notes */}
-                          <div className="min-w-0 flex-1">
-                            {order.notes ? (
-                              <p className="text-xs text-gray-400 italic bg-[#14161C]/40 border border-[#2A2A2A]/40 px-3 py-1.5 rounded-xl block max-w-lg leading-relaxed text-left">
-                                <span className="text-[9px] uppercase tracking-wider text-amber-500 font-bold block mb-0.5">Instructions:</span>
-                                {order.notes}
-                              </p>
-                            ) : (
-                              <span className="text-[10px] text-gray-600 italic">No notes provided.</span>
-                            )}
-                          </div>
-
-                          {/* Quick Workflow Action Panel depending on activeEmployee permissions & status */}
-                          <div className="flex items-center justify-end gap-2.5">
-                            
-                            {/* Defer Cycle Button */}
-                            {(order.status === 'pending' || order.status === 'approved') && (
-                              <button
-                                onClick={() => handleDeferCycle(order)}
-                                className="p-2 bg-zinc-800 hover:bg-zinc-700 border border-[#2A2A2A] text-zinc-300 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer"
-                                title="Defer to next timeframe cycle"
-                              >
-                                Defer
-                              </button>
-                            )}
-
-                            {/* PARTIAL FULFILLMENT SPLIT INTERFACE */}
-                            {splitInputId === order.id ? (
-                              <div className="flex items-center gap-1.5 bg-[#14161C] border border-[#2A2A2A] p-2 rounded-xl">
-                                <span className="text-[9px] text-gray-500 font-bold uppercase">Fill:</span>
-                                <input
-                                  type="number"
-                                  min="1"
-                                  max={order.quantity - 1}
-                                  value={splitQty}
-                                  onChange={(e) => setSplitQty(Math.min(order.quantity - 1, Math.max(1, parseInt(e.target.value) || 1)))}
-                                  className="w-16 bg-[#0D0F13] border border-[#2A2A2A] text-white p-1 rounded-lg text-xs font-mono font-bold text-center"
-                                />
-                                <button
-                                  onClick={() => handlePartialComplete(order, splitQty)}
-                                  className="p-1 bg-purple-500 text-white rounded hover:bg-purple-400 text-[10px] font-bold uppercase px-2 transition-all cursor-pointer"
-                                >
-                                  Complete Split
-                                </button>
-                                <button
-                                  onClick={() => setSplitInputId(null)}
-                                  className="p-1 bg-zinc-850 text-gray-400 rounded hover:text-white text-[10px] font-bold uppercase px-2 transition-all cursor-pointer"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            ) : (
-                              (order.status === 'pending' || order.status === 'approved') && order.quantity > 1 ? (
-                                <button
-                                  onClick={() => { setSplitInputId(order.id!); setSplitQty(1); }}
-                                  className="p-2 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 text-purple-400 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer"
-                                  title="Order a partial quantity of this need"
-                                >
-                                  Split & Fill
-                                </button>
-                              ) : null
-                            )}
-
-                            {/* Manager Actions */}
-                            {activeEmployee.role === 'manager' && (
-                              <>
-                                {/* Approve Action */}
-                                {order.status === 'pending' && (
-                                  <button
-                                    onClick={() => handleApproveItem(order.id!)}
-                                    className="p-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 hover:text-amber-300 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer"
-                                    title="Approve Request"
-                                  >
-                                    <CheckSquare className="w-3.5 h-3.5" />
-                                    Approve
-                                  </button>
-                                )}
-                                
-                                {/* Ordered / Complete Action */}
-                                {(order.status === 'pending' || order.status === 'approved') && (
-                                  <button
-                                    onClick={() => handleOrderItem(order.id!)}
-                                    className="p-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 hover:text-emerald-300 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer"
-                                    title="Complete & Order"
-                                  >
-                                    <ShoppingCart className="w-3.5 h-3.5" />
-                                    Order
-                                  </button>
-                                )}
-
-                                {/* Stock Received Action */}
-                                {order.status === 'ordered' && (
-                                  <button
-                                    onClick={() => handleReceiveItem(order.id!)}
-                                    className="p-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-400 hover:text-blue-300 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer"
-                                    title="Receive Stock in Inventory"
-                                  >
-                                    <Package className="w-3.5 h-3.5" />
-                                    Receive Stock
-                                  </button>
-                                )}
-
-                                {/* Inline Edit Trigger */}
-                                <button
-                                  onClick={() => startEditing(order)}
-                                  className="p-2 bg-[#14161C] border border-[#2A2A2A] hover:border-gray-500 text-gray-400 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer"
-                                  title="Edit quantity / prices"
-                                >
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                  Edit
-                                </button>
-                              </>
-                            )}
-
-                            {/* Delete/Cancel request */}
-                            {(activeEmployee.role === 'manager' || order.status === 'pending') && (
-                              <button
-                                onClick={() => handleDeleteItem(order.id!)}
-                                className="p-2 bg-[#C2410C]/10 hover:bg-[#C2410C]/20 border border-[#C2410C]/20 hover:border-[#C2410C]/40 text-[#C2410C] rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer"
-                                title="Remove Request"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-
-                          </div>
-
-                        </div>
-                      )}
-
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Historical Shopping Reports */}
-          <div className="mt-4">
-            <h3 className="text-xl font-serif text-[#E5E1DA] mb-4 flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-[#D4AF37]" /> Previous Reports / Shopping History
-            </h3>
-
-            <div className="space-y-4 animate-in fade-in duration-300">
-              {orderSessions.length === 0 ? (
-                <div className="py-12 border border-dashed border-[#2A2A2A] rounded-2xl bg-[#0D0F13] text-center">
-                  <p className="text-[10px] uppercase tracking-widest text-[#888]">No shopping history reports logged in database.</p>
-                </div>
-              ) : (
-                orderSessions.map(session => {
-                  const isExpanded = !!expandedReports[session.listId];
-                  const sessionItems = completedOrders.filter(o => o.listId === session.listId);
-                  const totalCost = sessionItems.reduce((sum, o) => sum + (o.estimatedPrice || 0) * o.quantity, 0);
-
-                  return (
-                    <div key={session.listId} className="bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl overflow-hidden shadow-md">
-                      <div 
-                        onClick={() => toggleReportExpand(session.listId)}
-                        className="p-4 sm:p-5 flex justify-between items-center hover:bg-[#14161C] transition-colors cursor-pointer"
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-start md:items-center gap-2 sm:gap-4 text-left">
-                          <span className="text-xs font-mono uppercase bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-2.5 py-0.5 rounded-full font-bold shrink-0">
-                            {session.sessionName || 'Order Batch'}
-                          </span>
-                          <div className="text-sm">
-                            <span className="text-gray-300 font-serif font-bold">Distributor: {session.vendorName || 'General Distributor'}</span>
-                            <span className="text-[#888] text-xs font-mono ml-3">
-                              • Placed by: <strong>{session.completedBy}</strong> • {formatDateTime(session.completedAt)}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-4 text-xs font-bold shrink-0">
-                          <span className="text-emerald-400 font-mono font-bold">${totalCost.toFixed(2)}</span>
-                          <div className="text-[#888] flex items-center gap-1.5">
-                            <span>{sessionItems.length} {sessionItems.length === 1 ? 'item' : 'items'}</span>
-                            {isExpanded ? <ChevronUp className="w-4 h-4 text-[#D4AF37]" /> : <ChevronDown className="w-4 h-4 text-[#D4AF37]" />}
-                          </div>
-                        </div>
-                      </div>
-
-                      {isExpanded && (
-                        <div className="border-t border-[#2A2A2A] bg-[#0A0B0E]/60 divide-y divide-[#2A2A2A] text-left">
-                          {session.notes && (
-                            <div className="p-4 bg-[#14161C]/30 text-xs text-gray-400 italic border-b border-[#2A2A2A]">
-                              <strong>Batch Notes:</strong> "{session.notes}"
-                            </div>
-                          )}
-                          {sessionItems.map(item => (
-                            <div key={item.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                              <div>
-                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1.5 text-[9px] text-[#666]">
-                                  {item.category && (
-                                    <span className={`border px-1.5 py-0.2 rounded font-semibold uppercase tracking-wider ${getCategoryBadgeStyles(item.category)}`}>
-                                      {item.category}
-                                    </span>
-                                  )}
-                                  {item.packType && <span className="bg-[#14161C] border border-[#2A2A2A] px-1.5 py-0.2 rounded text-gray-400 font-bold uppercase tracking-wider">{item.packType}</span>}
-                                  <span>Requested by: <strong className="text-gray-400">{item.addedBy || 'System'}</strong></span>
-                                  <span>at {formatDateTime(item.createdAt)}</span>
-                                  {item.urgency && (
-                                    <span className="text-gray-500 capitalize">Urgency: {item.urgency}</span>
-                                  )}
-                                  {item.timeframe && (
-                                    <span className="text-gray-500 uppercase font-mono">Cycle: {item.timeframe}</span>
-                                  )}
-                                </div>
-                                <h5 className="text-sm font-serif font-bold text-gray-300 uppercase italic tracking-wide flex items-center gap-1.5 flex-wrap">
-                                  {getCategoryIcon(item.category)}
-                                  <span>{item.brand}</span>
-                                  {item.flavor && <span className="text-xs font-sans text-gray-500 ml-1.5 normal-case">({item.flavor})</span>}
-                                </h5>
-                                {item.notes && <p className="text-[11px] text-gray-500 italic mt-1 font-sans">Instruction: "{item.notes}"</p>}
-                              </div>
-                              <div className="text-right shrink-0">
-                                <span className="text-sm font-mono text-gray-300 bg-[#14161C] px-2.5 py-1 border border-[#2A2A2A] rounded-lg">Qty: {item.quantity}</span>
-                                {item.estimatedPrice ? (
-                                  <p className="text-[10px] text-gray-500 font-mono mt-1">Cost: ${(item.estimatedPrice * item.quantity).toFixed(2)}</p>
-                                ) : null}
-                                <span className={`text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded ml-2 ${
-                                  item.status === 'received' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                }`}>
-                                  {item.status}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
+          {/* Tab Switcher */}
+          <div className="flex border-b border-[#2A2A2A] pb-1 gap-6 mb-2">
+            <button
+              onClick={() => setActiveTab('orders')}
+              className={`pb-2.5 text-sm font-serif font-bold tracking-wide transition-all relative flex items-center gap-2 cursor-pointer ${activeTab === 'orders' ? 'text-[#D4AF37]' : 'text-gray-400 hover:text-white'
+                }`}
+            >
+              <ShoppingCart className="w-4 h-4" />
+              <span>Orders</span>
+              {activeTab === 'orders' && (
+                <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#D4AF37] rounded-full animate-in fade-in zoom-in duration-300" />
               )}
-            </div>
+            </button>
+            <button
+              onClick={() => setActiveTab('history')}
+              className={`pb-2.5 text-sm font-serif font-bold tracking-wide transition-all relative flex items-center gap-2 cursor-pointer ${activeTab === 'history' ? 'text-[#D4AF37]' : 'text-gray-400 hover:text-white'
+                }`}
+            >
+              <BookOpen className="w-4 h-4" />
+              <span>History</span>
+              {activeTab === 'history' && (
+                <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#D4AF37] rounded-full animate-in fade-in zoom-in duration-300" />
+              )}
+            </button>
           </div>
+
+
+          {/* Active Filters Calculations */}
+          {(() => {
+            const activeFiltersCount =
+              (filterStatus !== 'pending-approved' ? 1 : 0) +
+              (filterUrgency !== 'all' ? 1 : 0) +
+              (filterTimeframe !== 'all' ? 1 : 0) +
+              (sortBy !== 'newest' ? 1 : 0);
+
+            return (
+              <>
+                {/* Unified Search & Filter Control Row */}
+                <div className="flex gap-2.5 w-full">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                    <input
+                      type="text"
+                      placeholder="Search requests..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full bg-[#0D0F13] border border-[#2A2A2A] rounded-xl text-sm py-2.5 pl-10 pr-4 focus:outline-none focus:border-[#D4AF37] transition-all duration-300 font-mono shadow-sm"
+                    />
+                  </div>
+
+                  <button
+                    onClick={() => setShowFilters(!showFilters)}
+                    className={`flex items-center gap-1.5 px-3.5 py-2.5 bg-[#14161C] border rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 active:scale-95 shadow-md cursor-pointer ${showFilters || activeFiltersCount > 0
+                      ? 'border-[#D4AF37] text-[#D4AF37] bg-[#D4AF37]/5'
+                      : 'border-[#2A2A2A] text-gray-300 hover:border-gray-500'
+                      }`}
+                  >
+                    <Filter className="w-4 h-4" />
+                    <span>Filters</span>
+                    {activeFiltersCount > 0 && (
+                      <span className="bg-[#D4AF37] text-black text-[9px] font-extrabold w-4.5 h-4.5 flex items-center justify-center rounded-full ml-0.5 font-mono">
+                        {activeFiltersCount}
+                      </span>
+                    )}
+                  </button>
+                </div>
+
+                {/* Collapsible Filters Panel */}
+                {showFilters && (
+                  <div className="bg-[#0D0F13] border border-[#2A2A2A] p-4 rounded-2xl shadow-sm flex flex-col gap-4 animate-in slide-in-from-top-2 duration-200">
+
+
+                    {/* Dropdowns Grid: Urgency, Cycle, Sort */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">Urgency</span>
+                        <select
+                          value={filterUrgency}
+                          onChange={(e) => setFilterUrgency(e.target.value)}
+                          className="w-full bg-[#14161C] border border-[#2A2A2A] text-gray-300 rounded-xl px-3 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#D4AF37] cursor-pointer"
+                        >
+                          <option value="all">All Urgencies</option>
+                          <option value="high">High Urgency</option>
+                          <option value="medium">Medium Urgency</option>
+                          <option value="low">Low Urgency</option>
+                        </select>
+                      </div>
+
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">Fulfillment Cycle</span>
+                        <select
+                          value={filterTimeframe}
+                          onChange={(e) => setFilterTimeframe(e.target.value)}
+                          className="w-full bg-[#14161C] border border-[#2A2A2A] text-gray-300 rounded-xl px-3 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#D4AF37] cursor-pointer"
+                        >
+                          <option value="all">All Cycles</option>
+                          <option value="asap">ASAP</option>
+                          <option value="1week">1 Week Cycle</option>
+                          <option value="2weeks">2 Week Cycle</option>
+                          <option value="monthly">Monthly Cycle</option>
+                        </select>
+                      </div>
+
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">Sort By</span>
+                        <select
+                          value={sortBy}
+                          onChange={(e) => setSortBy(e.target.value)}
+                          className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] rounded-xl px-3 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#D4AF37] cursor-pointer"
+                        >
+                          <option value="newest">Newest First</option>
+                          <option value="oldest">Oldest First</option>
+                          <option value="urgency">Urgency Level</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
+
+          {activeTab === 'orders' ? (
+            <>
+              {/* Needs List */}
+              <div className="bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl shadow-md overflow-hidden flex flex-col">
+
+                {/* Batch Action / Info Toolbar (Approach A) */}
+                {selectedCount > 0 ? (
+                  <div className="p-3 bg-[#D4AF37]/5 border-b border-[#2A2A2A] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-bold text-[#D4AF37] font-mono flex items-center gap-1.5 bg-[#D4AF37]/10 px-2.5 py-1 rounded-lg border border-[#D4AF37]/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] animate-pulse" />
+                        {selectedCount} Selected
+                      </span>
+                      <button
+                        onClick={() => setSelectedItemIds({})}
+                        className="text-gray-400 hover:text-white font-semibold uppercase tracking-wider text-[10px] cursor-pointer"
+                      >
+                        Clear
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+                      {/* Copy Selected */}
+                      <button
+                        onClick={handleCopySelectedList}
+                        className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 bg-[#14161C] hover:bg-[#1C1F27] border border-[#2A2A2A] text-gray-300 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer"
+                      >
+                        <ClipboardCopy className="w-3.5 h-3.5 text-[#D4AF37]" />
+                        <span>Copy List</span>
+                      </button>
+
+                      {/* Complete Batch / Complete */}
+                      <button
+                        onClick={openCompleteModal}
+                        className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-500 hover:bg-emerald-450 text-black rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer shadow"
+                      >
+                        <CheckSquare className="w-3.5 h-3.5" />
+                        <span>{selectedCount === 1 ? 'Complete' : 'Complete Batch'}</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3.5 bg-[#14161C]/60 border-b border-[#2A2A2A] flex justify-between items-center gap-4">
+                    {/* Left Side: Inline status info */}
+                    <div className="flex items-center gap-2 text-xs font-semibold text-gray-400">
+                      <span className="text-white font-mono bg-[#2A2A2A] px-2 py-0.5 rounded-md">{activeNeedsCount}</span> Requests
+                      <span className="text-[#888]">•</span>
+                      {highPriorityCount > 0 ? (
+                        <span className="flex items-center gap-1.5 text-red-400">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                          {highPriorityCount} Critical
+                        </span>
+                      ) : (
+                        <span className="text-gray-500">0 Critical</span>
+                      )}
+                    </div>
+
+                    {/* Right Side: Select All Checkbox */}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={displayNeeds.length > 0 && displayNeeds.every(item => selectedItemIds[item.id!])}
+                        onChange={() => handleSelectAll(displayNeeds)}
+                        disabled={displayNeeds.length === 0}
+                        className="w-4.5 h-4.5 text-[#D4AF37] accent-[#D4AF37] rounded border-gray-300 focus:ring-[#D4AF37] cursor-pointer"
+                      />
+                      <span className="text-[10px] sm:text-xs text-gray-300 font-bold uppercase tracking-wider">Select All ({displayNeeds.length})</span>
+                    </div>
+                  </div>
+                )}
+
+                {displayNeeds.length === 0 ? (
+                  <div className="p-16 text-center flex flex-col items-center justify-center space-y-4">
+                    <ShoppingCart className="w-12 h-12 text-[#2A2A2A]" />
+                    <p className="text-[10px] uppercase tracking-widest text-[#888]">No matching store requests logged.</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-3.5 p-3.5 sm:p-5 max-w-3xl mx-auto w-full">
+                    {displayNeeds.map(order => {
+                      const isHigh = order.urgency === 'high';
+                      const urgencyStyles = isHigh
+                        ? 'border-l-4 border-l-red-500 bg-red-500/[0.02]'
+                        : order.urgency === 'medium'
+                          ? 'border-l-4 border-l-orange-500 bg-orange-500/[0.01]'
+                          : 'border-l-4 border-l-blue-500';
+
+                      return (
+                        <div
+                          key={order.id}
+                          className={`p-3.5 sm:p-4 bg-[#14161C]/50 hover:bg-[#1A1D24]/50 border border-[#2A2A2A] rounded-2xl flex items-center justify-between gap-4 transition-all ${urgencyStyles} ${selectedItemIds[order.id!] ? 'border-[#D4AF37]/70 bg-[#D4AF37]/5' : 'hover:border-[#D4AF37]/35'}`}
+                        >
+                          {/* Left Part: Selection & Item Info */}
+                          <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                            <input
+                              type="checkbox"
+                              checked={!!selectedItemIds[order.id!]}
+                              onChange={() => toggleItemSelection(order.id!)}
+                              className="w-5 h-5 text-[#D4AF37] accent-[#D4AF37] rounded border-gray-300 focus:ring-[#D4AF37] shrink-0 cursor-pointer"
+                            />
+                            <div className="min-w-0 flex-1 flex flex-col gap-0.5 text-left">
+                              <h4 className="text-sm sm:text-base font-serif text-[#E5E1DA] font-bold uppercase tracking-wide flex items-center gap-2 flex-wrap">
+                                <span>{order.brand}</span>
+                                {order.flavor && <span className="text-[#888] font-sans text-xs lowercase normal-case italic font-normal">({order.flavor})</span>}
+                              </h4>
+
+                              {/* Muted Subtitle with Urgency */}
+                              <div className="flex items-center gap-2 text-[9px] uppercase tracking-wider text-gray-500 font-bold flex-wrap">
+                                <span className={order.urgency === 'high' ? 'text-red-400' : order.urgency === 'medium' ? 'text-orange-400' : 'text-blue-400'}>
+                                  {order.urgency || 'medium'}
+                                </span>
+                                {order.timeframe === 'asap' && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="text-red-400 animate-pulse">ASAP</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Right Part: Qty pill & Details button */}
+                          <div className="flex items-center gap-3 shrink-0">
+                            <div className="bg-[#0D0F13] border border-[#2A2A2A] px-3 py-1.5 rounded-xl flex items-center gap-1.5 font-mono text-xs font-bold text-[#E5E1DA]">
+                              <span className="text-[9px] uppercase tracking-wider text-gray-500 font-sans font-bold">Qty:</span>
+                              <span>{order.quantity}</span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => openOrderDetailModal(order)}
+                              className="w-8 h-8 rounded-full bg-[#14161C] border border-[#2A2A2A] hover:border-[#D4AF37]/50 text-gray-400 hover:text-[#D4AF37] flex items-center justify-center transition-all active:scale-90 cursor-pointer shadow-md shrink-0"
+                              title="View Details"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <OrderHistorySection searchQuery={searchQuery} onViewDetails={openOrderDetailModal} />
+          )}
         </div>
 
         {/* Right Sidebar panel */}
         <div className="w-full lg:w-96 flex flex-col gap-6 animate-in fade-in slide-in-from-right-3 duration-300 shrink-0">
-          
+
           {/* Add New Need Panel */}
           <div className="bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl p-6 shadow-md text-left relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#D4AF37] to-[#B3932E]" />
-            
+
             <h3 className="text-lg font-serif text-[#D4AF37] mb-2 flex items-center gap-2">
               <Plus className="w-5 h-5" />
               Request Need
             </h3>
             <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-6">Write what the store requires (All Optional)</p>
-            
+
             {/* Real-time Custom Request Preview Card */}
             <div className="mb-6 p-4 rounded-xl border border-dashed border-[#2A2A2A] bg-[#14161C]/30 relative overflow-hidden">
               <div className="absolute top-2.5 right-3 flex items-center gap-1.5 text-[8px] uppercase tracking-wider text-gray-500 font-bold bg-[#14161C] px-2 py-0.5 rounded border border-[#2A2A2A]/50">
                 <Eye className="w-3.5 h-3.5 text-[#D4AF37]" /> Live Preview
               </div>
               <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-3 font-semibold">Dashboard Card Mockup:</p>
-              
+
               <div className="bg-[#0D0F13]/90 border border-[#2A2A2A]/80 rounded-xl p-4 flex flex-col gap-3 shadow-inner">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -1513,15 +1196,14 @@ export function OrderBookSection({
                       <span className="text-[9px] bg-[#14161C] border border-[#2A2A2A] px-1.5 py-0.2 rounded text-zinc-400 font-medium uppercase tracking-wider transition-all">
                         {newPackType.trim() || 'Item'}
                       </span>
-                      <span className={`text-[8px] border px-1.5 py-0.2 rounded font-bold uppercase tracking-wider ${
-                        newUrgency === 'high' ? 'bg-red-500/10 border-red-500/20 text-red-400' :
+                      <span className={`text-[8px] border px-1.5 py-0.2 rounded font-bold uppercase tracking-wider ${newUrgency === 'high' ? 'bg-red-500/10 border-red-500/20 text-red-400' :
                         newUrgency === 'medium' ? 'bg-orange-500/10 border-orange-500/20 text-orange-400' :
-                        'bg-blue-500/10 border-blue-500/20 text-blue-400'
-                      }`}>
+                          'bg-blue-500/10 border-blue-500/20 text-blue-400'
+                        }`}>
                         {newUrgency}
                       </span>
                     </div>
-                    
+
                     <h4 className="text-sm font-serif text-[#E5E1DA] uppercase flex items-center gap-1.5 flex-wrap font-bold">
                       {getCategoryIcon(newCategory)}
                       <span className="truncate max-w-[140px] block">
@@ -1546,12 +1228,7 @@ export function OrderBookSection({
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center border-t border-[#2A2A2A]/40 pt-2 text-xs">
-                  <span className="text-gray-500 font-semibold">Est. Spend:</span>
-                  <span className="font-mono text-[#D4AF37] font-bold">
-                    ${((parseFloat(newEstimatedPrice) || 0) * (parseInt(newQty) || 1)).toFixed(2)}
-                  </span>
-                </div>
+
 
                 {newNotes.trim() && (
                   <div className="text-[9px] text-[#888] bg-[#14161C]/50 border border-[#2A2A2A]/20 p-2 rounded italic text-left">
@@ -1578,7 +1255,7 @@ export function OrderBookSection({
                   placeholder="e.g. 10 Bags of Ice, Swisher Sweets..."
                   autoComplete="off"
                 />
-                
+
                 {/* Autocomplete Suggestions */}
                 {showSuggestions && matchingSuggestions.length > 0 && (
                   <div className="absolute left-0 right-0 mt-1 bg-[#14161C] border border-[#2A2A2A] rounded-xl overflow-hidden z-20 shadow-xl max-h-48 overflow-y-auto">
@@ -1675,15 +1352,14 @@ export function OrderBookSection({
                       key={u}
                       type="button"
                       onClick={() => setNewUrgency(u)}
-                      className={`py-2 px-3 text-xs rounded-xl font-bold uppercase border transition-all cursor-pointer ${
-                        newUrgency === u
-                          ? u === 'high'
-                            ? 'bg-red-500/10 border-red-500 text-red-400 shadow-[0_0_8px_rgba(239,68,68,0.2)]'
-                            : u === 'medium'
+                      className={`py-2 px-3 text-xs rounded-xl font-bold uppercase border transition-all cursor-pointer ${newUrgency === u
+                        ? u === 'high'
+                          ? 'bg-red-500/10 border-red-500 text-red-400 shadow-[0_0_8px_rgba(239,68,68,0.2)]'
+                          : u === 'medium'
                             ? 'bg-orange-500/10 border-orange-500 text-orange-400'
                             : 'bg-blue-500/10 border-blue-500 text-blue-400'
-                          : 'bg-[#14161C] border-[#2A2A2A] text-gray-400 hover:text-white'
-                      }`}
+                        : 'bg-[#14161C] border-[#2A2A2A] text-gray-400 hover:text-white'
+                        }`}
                     >
                       {u}
                     </button>
@@ -1707,21 +1383,7 @@ export function OrderBookSection({
               </div>
 
               {/* Estimated Price */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Est. Unit Price ($)</label>
-                  <span className="text-[9px] uppercase tracking-wider text-gray-500 font-semibold italic">Optional</span>
-                </div>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={newEstimatedPrice}
-                  onChange={(e) => setNewEstimatedPrice(e.target.value)}
-                  className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl font-mono shadow-inner font-bold"
-                  placeholder="0.00"
-                />
-              </div>
+
 
               {/* Notes */}
               <div className="space-y-2">
@@ -1753,7 +1415,7 @@ export function OrderBookSection({
                 />
               </div>
 
-              <button 
+              <button
                 type="submit"
                 className="w-full mt-2 bg-[#D4AF37] text-black py-3.5 rounded-xl font-bold uppercase tracking-widest text-xs shadow-lg hover:bg-[#E5C25A] active:bg-[#B3932E] transition-all cursor-pointer"
               >
@@ -1765,13 +1427,13 @@ export function OrderBookSection({
           {/* Suggested Reorders (Low stock widget) */}
           <div className="bg-[#0D0F13] border border-[#2A2A2A] rounded-2xl p-6 shadow-md text-left relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 to-[#D4AF37]" />
-            
+
             <h3 className="text-lg font-serif text-[#E5E1DA] mb-2 flex items-center gap-2">
               <ShieldAlert className="w-5 h-5 text-red-400 animate-pulse" />
               Suggested Reorders
             </h3>
             <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-4">Stock below threshold levels</p>
-            
+
             {lowStockSuggestions.length === 0 ? (
               <p className="text-xs text-zinc-500 italic py-2">All inventory items are adequately stocked!</p>
             ) : (
@@ -1793,7 +1455,6 @@ export function OrderBookSection({
                         setNewPackType(item.packType || 'Single');
                         setNewQty('15'); // default suggested order count
                         setNewUrgency('high');
-                        setNewEstimatedPrice(item.price ? String(item.price) : '0.00');
                         setNewNotes('Auto-restock request for low stock levels');
                         toast.info(`Prefilled request with ${item.brand}`);
                       }}
@@ -1813,16 +1474,22 @@ export function OrderBookSection({
 
       {/* Complete Session Dialog Modal */}
       {showCompleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
-          <div className="bg-[#0D0F13] border border-[#2A2A2A] rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl relative overflow-hidden flex flex-col text-left">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm"
+          onClick={() => setShowCompleteModal(false)}
+        >
+          <div
+            className="bg-[#0D0F13] border border-[#2A2A2A] rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl relative overflow-hidden flex flex-col text-left"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="absolute top-0 left-0 w-full h-1.5 bg-[#D4AF37]"></div>
-            
+
             <h3 className="text-xl font-serif font-bold text-[#E5E1DA] mb-2 flex items-center gap-2">
               <CheckSquare className="w-6 h-6 text-[#D4AF37]" />
               Configure Ordering Batch
             </h3>
             <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-6">Group completed orders into a recorded batch</p>
-            
+
             <div className="space-y-4">
               {/* Batch Mode Selector */}
               <div className="space-y-1">
@@ -1883,7 +1550,7 @@ export function OrderBookSection({
                 onClick={handleProcessCompletion}
                 className="flex-1 bg-emerald-500 hover:bg-emerald-450 text-black py-3 rounded-xl font-bold uppercase tracking-wider text-xs shadow-lg transition-all active:scale-95 cursor-pointer"
               >
-                Complete Batch
+                {modalTargetCount === 1 ? 'Complete' : 'Complete Batch'}
               </button>
               <button
                 onClick={() => setShowCompleteModal(false)}
@@ -1896,7 +1563,296 @@ export function OrderBookSection({
         </div>
       )}
 
+      {/* Needs Item Details Popover Modal (Scenario 3) */}
+      {selectedOrderDetail && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm overflow-y-auto"
+          onClick={() => {
+            setSelectedOrderDetailId(null);
+            setModalEditing(false);
+            setModalSplitActive(false);
+          }}
+        >
+          <div
+            className="bg-[#0D0F13] border border-[#2A2A2A] rounded-3xl p-6 sm:p-8 w-full max-w-lg shadow-2xl relative overflow-hidden flex flex-col text-left animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top Priority Color Bar */}
+            <div className={`absolute top-0 left-0 w-full h-1.5 ${selectedOrderDetail.urgency === 'high' ? 'bg-red-500' :
+              selectedOrderDetail.urgency === 'medium' ? 'bg-orange-500' : 'bg-blue-500'
+              }`} />
 
+            {/* Modal Close Icon */}
+            <button
+              onClick={() => {
+                setSelectedOrderDetailId(null);
+                setModalEditing(false);
+                setModalSplitActive(false);
+              }}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white hover:bg-[#2A2A2A] p-2 rounded-xl transition-all cursor-pointer z-10"
+              aria-label="Close detail modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {modalEditing ? (
+              /* ================== EDIT MODE ================== */
+              <div className="space-y-4 mt-2">
+                <div className="border-b border-[#2A2A2A] pb-3 mb-2">
+                  <h3 className="text-lg font-serif font-bold text-[#E5E1DA]">Edit Request Details</h3>
+                  <p className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">{selectedOrderDetail.brand.toUpperCase()}</p>
+                </div>
+
+                <div className="space-y-3">
+                  {/* Qty Input */}
+                  <div className="space-y-1">
+                    <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Quantity Required</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={modalEditQty}
+                      onChange={(e) => setModalEditQty(parseInt(e.target.value) || 1)}
+                      className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl font-mono font-bold"
+                    />
+                  </div>
+
+                  {/* Price Input */}
+
+
+                  {/* Urgency Selector */}
+                  <div className="space-y-1">
+                    <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Urgency Level</label>
+                    <select
+                      value={modalEditUrgency}
+                      onChange={(e) => setModalEditUrgency(e.target.value as any)}
+                      className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl appearance-none cursor-pointer font-bold"
+                    >
+                      <option value="low">LOW</option>
+                      <option value="medium">MEDIUM</option>
+                      <option value="high">HIGH</option>
+                    </select>
+                  </div>
+
+                  {/* Fulfillment Cycle Selector */}
+                  <div className="space-y-1">
+                    <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Fulfillment Cycle</label>
+                    <select
+                      value={modalEditTimeframe}
+                      onChange={(e) => setModalEditTimeframe(e.target.value as any)}
+                      className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl appearance-none cursor-pointer font-bold"
+                    >
+                      <option value="asap">ASAP</option>
+                      <option value="1week">1 Week Cycle</option>
+                      <option value="2weeks">2 Week Cycle</option>
+                      <option value="monthly">Monthly Cycle</option>
+                    </select>
+                  </div>
+
+                  {/* Notes Input */}
+                  <div className="space-y-1">
+                    <label className="block text-xs uppercase tracking-[0.2em] text-[#888] font-bold">Special Notes / Instructions</label>
+                    <textarea
+                      value={modalEditNotes}
+                      onChange={(e) => setModalEditNotes(e.target.value)}
+                      rows={2}
+                      className="w-full bg-[#14161C] border border-[#2A2A2A] text-[#E5E1DA] p-3 text-sm focus:outline-none focus:border-[#D4AF37] transition-colors rounded-xl resize-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-3 border-t border-[#2A2A2A]/40">
+                  <button
+                    onClick={() => handleSaveModalEdit(selectedOrderDetail.id!)}
+                    className="flex-1 py-3 bg-emerald-500 text-black text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-emerald-450 active:scale-95 transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Check className="w-4 h-4" />
+                    Save Changes
+                  </button>
+                  <button
+                    onClick={() => setModalEditing(false)}
+                    className="flex-1 py-3 bg-zinc-800 text-gray-300 text-xs font-bold uppercase tracking-wider rounded-xl hover:text-white active:scale-95 transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* ================== DETAIL VIEW MODE ================== */
+              <div className="space-y-5 mt-2 flex-1 flex flex-col justify-between">
+                <div className="space-y-3">
+                  {/* Brand & Flavor */}
+                  <div>
+                    <h3 className="text-2xl font-serif text-[#E5E1DA] font-bold uppercase tracking-wide italic leading-tight flex items-center gap-2 flex-wrap text-left">
+                      {getCategoryIcon(selectedOrderDetail.category)}
+                      <span>{selectedOrderDetail.brand}</span>
+                      {selectedOrderDetail.flavor && (
+                        <span className="text-gray-400 font-sans text-sm normal-case italic font-normal">({selectedOrderDetail.flavor})</span>
+                      )}
+                    </h3>
+
+                    {/* Badges Row */}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                      {selectedOrderDetail.category && (
+                        <span className={`text-[8px] sm:text-[9px] border px-2 py-0.5 rounded uppercase tracking-wider font-bold ${getCategoryBadgeStyles(selectedOrderDetail.category)}`}>
+                          {selectedOrderDetail.category}
+                        </span>
+                      )}
+                      {selectedOrderDetail.packType && (
+                        <span className="text-[9px] sm:text-[10px] bg-[#14161C] border border-[#2A2A2A]/60 px-2 py-0.5 rounded text-[#888] uppercase tracking-wider font-semibold">
+                          {selectedOrderDetail.packType}
+                        </span>
+                      )}
+                      <span className={`text-[8px] sm:text-[9px] border px-2 py-0.5 rounded uppercase tracking-wider font-bold ${selectedOrderDetail.urgency === 'high' ? 'bg-red-500/10 border-red-500/20 text-red-400' :
+                        selectedOrderDetail.urgency === 'medium' ? 'bg-orange-500/10 border-orange-500/20 text-orange-400' :
+                          'bg-blue-500/10 border-blue-500/20 text-blue-400'
+                        }`}>
+                        {selectedOrderDetail.urgency || 'medium'}
+                      </span>
+                      <span className="text-[8px] sm:text-[9px] bg-zinc-800 text-zinc-300 border border-zinc-700/60 px-2 py-0.5 rounded uppercase tracking-wider font-bold flex items-center gap-1">
+                        <Clock className="w-2.5 h-2.5 text-[#D4AF37]" />
+                        Cycle: {selectedOrderDetail.timeframe === 'asap' ? 'ASAP' : selectedOrderDetail.timeframe === '1week' ? '1 Wk' : selectedOrderDetail.timeframe === '2weeks' ? '2 Wk' : 'Mth'}
+                      </span>
+
+                    </div>
+                  </div>
+
+                  {/* Quantity Card */}
+                  <div className="bg-[#14161C] border border-[#2A2A2A] rounded-2xl p-4 shadow-inner">
+                    <div className="flex flex-col text-left">
+                      <span className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">Qty Required</span>
+                      <span className="text-3xl font-mono text-[#E5E1DA] font-bold mt-1">{selectedOrderDetail.quantity}</span>
+                    </div>
+                  </div>
+
+                  {/* Notes box */}
+                  {selectedOrderDetail.notes ? (
+                    <div className="p-3.5 bg-[#14161C]/50 border border-amber-500/20 rounded-2xl block text-left">
+                      <span className="text-[9px] uppercase tracking-wider text-[#D4AF37] font-bold block mb-1">Instructions / Notes:</span>
+                      <p className="text-xs text-gray-300 italic leading-relaxed">{selectedOrderDetail.notes}</p>
+                    </div>
+                  ) : null}
+
+                  {/* Logs Section */}
+                  <div className="space-y-1.5 border-t border-[#2A2A2A]/40 pt-3 text-[10px] text-gray-500 font-semibold space-y-2 text-left">
+                    <div className="flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-[#D4AF37]" />
+                      <span>Logged by: <strong className="text-gray-400">{selectedOrderDetail.addedBy || 'System'}</strong></span>
+                      <span className="opacity-55">•</span>
+                      <span className="font-mono">{formatDateTime(selectedOrderDetail.createdAt)}</span>
+                    </div>
+
+                    {selectedOrderDetail.approvedBy && (
+                      <div className="flex items-center gap-1.5 text-amber-500">
+                        <CheckSquare className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Approved by: <strong className="text-amber-400">{selectedOrderDetail.approvedBy}</strong></span>
+                        <span className="opacity-55">•</span>
+                        <span className="font-mono">{formatDateTime(selectedOrderDetail.approvedAt || 0)}</span>
+                      </div>
+                    )}
+
+                    {selectedOrderDetail.receivedBy && (
+                      <div className="flex items-center gap-1.5 text-blue-400">
+                        <Package className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Received by: <strong className="text-blue-400">{selectedOrderDetail.receivedBy}</strong></span>
+                        <span className="opacity-55">•</span>
+                        <span className="font-mono">{formatDateTime(selectedOrderDetail.receivedAt || 0)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Inline partial completion split wrapper inside modal */}
+                {modalSplitActive ? (
+                  <div className="bg-[#14161C] border border-[#2A2A2A] p-3.5 rounded-2xl space-y-3 animate-in fade-in duration-200">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold">Split & Fill Quantity</span>
+                      <span className="text-[9px] text-gray-500 font-mono">Max split: {selectedOrderDetail.quantity - 1}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        max={selectedOrderDetail.quantity - 1}
+                        value={modalSplitQty}
+                        onChange={(e) => setModalSplitQty(Math.min(selectedOrderDetail.quantity - 1, Math.max(1, parseInt(e.target.value) || 1)))}
+                        className="flex-1 bg-[#0D0F13] border border-[#2A2A2A] text-white p-2.5 rounded-xl text-center font-mono font-bold"
+                      />
+                      <button
+                        onClick={() => handleModalPartialComplete(selectedOrderDetail, modalSplitQty)}
+                        className="px-4 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold uppercase transition-all cursor-pointer"
+                      >
+                        Confirm Fill
+                      </button>
+                      <button
+                        onClick={() => setModalSplitActive(false)}
+                        className="px-4 bg-zinc-800 text-gray-400 hover:text-white rounded-xl text-xs font-bold uppercase transition-all cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Workflow Actions */}
+                {!modalSplitActive && (
+                  <div className="space-y-2.5 pt-3 border-t border-[#2A2A2A]/40">
+                    {/* Primary Actions Row */}
+                    <div className="flex flex-wrap gap-2 justify-end">
+                      {/* Complete Request Button */}
+                      {(selectedOrderDetail.status === 'pending' || selectedOrderDetail.status === 'approved') && (
+                        <button
+                          onClick={async () => {
+                            await db.orders.update(selectedOrderDetail.id!, {
+                              status: 'received',
+                              receivedBy: activeEmployee.name,
+                              receivedAt: Date.now()
+                            });
+                            toast.success('Need marked as Completed!');
+                            setSelectedOrderDetailId(null);
+                          }}
+                          className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-450 text-black rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 shadow-lg shadow-emerald-500/10"
+                        >
+                          <CheckSquare className="w-3.5 h-3.5" />
+                          Complete Request
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Secondary Actions Row (Edit, Delete) */}
+                    <div className="flex gap-2 justify-between border-t border-[#2A2A2A]/40 pt-2.5">
+                      {/* Delete */}
+                      {(activeEmployee.role === 'manager' || selectedOrderDetail.status === 'pending') && (
+                        <button
+                          onClick={() => {
+                            handleDeleteItem(selectedOrderDetail.id!);
+                            setSelectedOrderDetailId(null);
+                          }}
+                          className="px-3.5 py-2.5 bg-[#C2410C]/10 hover:bg-[#C2410C]/20 border border-[#C2410C]/25 text-[#C2410C] hover:text-[#e04c10] rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Delete
+                        </button>
+                      )}
+
+                      {/* Edit */}
+                      {activeEmployee.role === 'manager' && (
+                        <button
+                          onClick={() => setModalEditing(true)}
+                          className="px-3.5 py-2.5 bg-[#14161C] border border-[#2A2A2A] hover:border-gray-500 text-gray-400 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 ml-auto"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                          Edit Request
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   );

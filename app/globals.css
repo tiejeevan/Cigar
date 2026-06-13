@@ -11,3 +11,19 @@
     display: none; /* Chrome, Safari and Opera */
   }
 }
+
+/* Disable text selection globally to feel like a native app */
+*, *::before, *::after {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Retain text selection functionality in text inputs & textareas for editing */
+input, textarea, [contenteditable="true"] {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
